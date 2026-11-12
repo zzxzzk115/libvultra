@@ -14,8 +14,12 @@ branch; their instructions below are kept as instructions and marked where they 
   detects the platform as mingw.
 - Linux x86_64 (not re-verified on this branch): C++23 compiler, CMake, pkg-config, Python 3, Vulkan development
   files, X11/Wayland development libraries, wayland-protocols and xkbcommon.
-- macOS arm64: Xcode with its command line tools. The Vulkan backend needs the LunarG Vulkan SDK with
-  `VULKAN_SDK` pointing at its `macOS` directory; the loader is linked from there. Metal needs no SDK.
+- macOS arm64: Xcode with its command line tools. Metal, the default there, needs nothing else. The Vulkan
+  backend (`--libvultra_graphics_api=vulkan`) needs the LunarG Vulkan SDK with `VULKAN_SDK` pointing at its
+  `macOS` directory; the loader is linked from there. Its programs therefore run only where that SDK is
+  installed, unless they sit in an application bundle that carries `libvulkan.1.dylib` and `libMoltenVK.dylib` in
+  `Contents/Frameworks` and a MoltenVK driver manifest in `Contents/Resources/vulkan/icd.d`: the library is
+  linked with an `@executable_path/../Frameworks` rpath for that.
 - [xmake](https://xmake.io/guide/quick-start.html#installation) on PATH.
 - A Vulkan 1.3 GPU and driver, or a Vulkan 1.2 driver exposing dynamic rendering and synchronization2 as
   extensions (MoltenVK). Ray tracing, ray queries and mesh shading require their device features.
@@ -44,7 +48,7 @@ A root build defaults to all modules, all examples and the tests. Configuration 
 | `libvultra_shader_compiler` | Default on. `n` keeps only the cooked shader runtime: no Slang, no shader hot reload. |
 | `libvultra_asset_import` | Default on. `n` keeps asset values and VPK archives without importers or meshlet building. |
 | `libvultra_with_openxr` | Default on. `n` leaves `xr` out of `all`; selecting `xr` explicitly requires it. |
-| `libvultra_graphics_api` | `vulkan` (default, native platforms) or `metal` on macOS; WebAssembly requires `webgpu` or `webgl2`. |
+| `libvultra_graphics_api` | `metal` (default on macOS) or `vulkan` there; `vulkan` on other native platforms; WebAssembly requires `webgpu` or `webgl2`. |
 | `libvultra_vri_dir` | Build VRI from a local checkout instead of the pinned release. |
 | `libvultra_build_examples`, `libvultra_build_tests` | Default on at the root, off when embedded. |
 | `libvultra_examples` | `all`, a group (`basics`, `offline`, `ui`), a mode (`basics.vri`) or a comma-separated union. |

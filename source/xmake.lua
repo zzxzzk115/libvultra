@@ -101,7 +101,8 @@ target("vultra")
                 raise("macOS Vulkan builds require VULKAN_SDK pointing at the LunarG SDK's macOS directory")
             end
             add_ldflags(path.join(sdk, "lib", "libvulkan.dylib"), {public = true, force = true})
-            add_rpathdirs(path.join(sdk, "lib"), {public = true})
+            -- An application bundle carries its own loader in Contents/Frameworks; elsewhere the SDK's is used.
+            add_rpathdirs("@executable_path/../Frameworks", path.join(sdk, "lib"), {public = true})
         end
         if desktop then
             add_files("gpu/src/swapchain_window.cpp")
