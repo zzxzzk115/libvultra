@@ -281,6 +281,16 @@ namespace vultra
 
     std::expected<glm::mat4, Error> XREye::viewProjection(float nearZ, float farZ) const
     {
+        const auto eye = camera(nearZ, farZ);
+        if (!eye)
+        {
+            return std::unexpected(eye.error());
+        }
+        return eye->projection * eye->view;
+    }
+
+    std::expected<RenderCamera, Error> XREye::camera(float nearZ, float farZ, const glm::mat4& origin) const
+    {
         if (!(nearZ > 0 && farZ > nearZ))
         {
             return makeError("Require 0 < near < far");
@@ -298,7 +308,7 @@ namespace vultra
         projection[2][2] = farZ / (nearZ - farZ);
         projection[2][3] = -1;
         projection[3][2] = farZ * nearZ / (nearZ - farZ);
-        return projection * glm::inverse(poseMatrix());
+        return RenderCamera {glm::inverse(origin * poseMatrix()), projection, nearZ, farZ};
     }
 
     OpenXRSession::OpenXRSession(OpenXRSystem& system, Device& device) :
@@ -457,9 +467,10 @@ namespace vultra
             auto& eye = m_Eyes[e];
             eye.size  = {views[e].recommendedImageRectWidth, views[e].recommendedImageRectHeight};
             XrSwapchainCreateInfo info {XR_TYPE_SWAPCHAIN_CREATE_INFO};
-            // Transfer source lets a mirror or a readback copy the eye image before it is released.
+            // The transfer usages let a mirror or a readback copy the eye image before it is released, and let
+            // a host copy a finished image into it instead of drawing.
             info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT |
-                              XR_SWAPCHAIN_USAGE_TRANSFER_SRC_BIT;
+                              XR_SWAPCHAIN_USAGE_TRANSFER_SRC_BIT | XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
             info.format      = format;
             info.width       = eye.size.width;
             info.height      = eye.size.height;
@@ -495,8 +506,8 @@ namespace vultra
                 VriWrapTextureDesc wrap {};
                 wrap.nativeTexture = image.image;
                 wrap.desc          = colorTexture(eye.size, m_Format);
-                wrap.desc.usage =
-                    VriTextureUsage_ColorAttachment | VriTextureUsage_ShaderResource | VriTextureUsage_TransferSrc;
+                wrap.desc.usage    = VriTextureUsage_ColorAttachment | VriTextureUsage_ShaderResource |
+                                  VriTextureUsage_TransferSrc | VriTextureUsage_TransferDst;
                 VriTexture* wrapper = nullptr;
                 if (auto result = check(interop.WrapTexture(m_Device.handle, &wrap, &wrapper), "Wrap eye image");
                     !result)

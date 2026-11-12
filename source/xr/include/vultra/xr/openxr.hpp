@@ -38,7 +38,11 @@ namespace vultra
         Texture* color = nullptr;
         XrView   view {XR_TYPE_VIEW};
 
-        glm::mat4                                     poseMatrix() const;
+        glm::mat4 poseMatrix() const;
+        // The eye as a camera of the tracking space. `origin` places that space in the world: the pose of the
+        // tracking origin there.
+        [[nodiscard]] std::expected<RenderCamera, Error>
+        camera(float nearZ = 0.05f, float farZ = 100.0f, const glm::mat4& origin = glm::mat4(1)) const;
         [[nodiscard]] std::expected<glm::mat4, Error> viewProjection(float nearZ = 0.05f, float farZ = 100.0f) const;
     };
 
@@ -95,6 +99,12 @@ namespace vultra
         VriFormat format() const
         {
             return m_Format;
+        }
+
+        // The image size of one eye, 0 left and 1 right.
+        Extent eyeSize(size_t eye) const
+        {
+            return m_Eyes.at(eye).size;
         }
 
     private:
