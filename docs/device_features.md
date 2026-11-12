@@ -28,7 +28,7 @@ from VRI's source only; **not exposed** means VRI has no way to request or use i
 | Independent compute queue | `asyncCompute` | A second queue of the graphics family when the family has one. | A second `MTLCommandQueue`; whether it overlaps graphics is up to the GPU. | No: one queue. | Vulkan: run here (`test-graph-async`). Metal, WebGPU: source. |
 | Ray query and acceleration structures | `rayQuery`, `rayTracingPipeline` | `VK_KHR_ray_query`, `VK_KHR_acceleration_structure`, `VK_KHR_ray_tracing_pipeline` when requested. | Ray queries when the GPU supports ray tracing; no ray tracing pipeline. | No. | Vulkan: reported here. Metal, WebGPU: source. |
 | Mesh shading | `meshShading` | `VK_EXT_mesh_shader` (task and mesh) when requested. | Metal 3 GPU family. | No. | Vulkan: run here (`test-meshlets`, `example-basics mesh-shading`). Metal, WebGPU: source. |
-| 64-bit atomics | none | Not exposed: no feature bit, and the backend does not enable `shaderInt64` or 64-bit atomic features. | Not exposed. | Not exposed. | Source. |
+| 64-bit atomics | none | Not exposed in the released VRI: no feature bit, and the backend does not enable `shaderInt64` or 64-bit atomic features. | Not exposed. Metal Shading Language has 64-bit `ulong` atomics for min and max only, on newer GPU families; VRI does not wire them. | Not exposed; WebGPU has no 64-bit atomics. | Source; see the decision below for the local VRI branch. |
 | Sparse textures | none | Not exposed: no sparse or tiled resource API. | Not exposed. | Not exposed. | Source. |
 | Indirect draw with a count | `drawIndirectCount` | Vulkan 1.2 `drawIndirectCount`, enabled when supported. | No: the command is an empty stub and the flag is false. | No. | Vulkan: reported here, not run. Metal, WebGPU: source. |
 | Variable-rate shading | `variableRateShading` | `VK_KHR_fragment_shading_rate` when requested. | No. | No. | Vulkan: reported here, not run. Metal, WebGPU: source. |
@@ -46,11 +46,14 @@ these techniques.
 64-bit atomics and sparse textures are missing from VRI on every backend. Variable-rate shading, indirect draws
 with a count and wave operations are exposed on Vulkan only. The owner decided on 2026-11-12:
 
-- **64-bit atomics** go into VRI, Vulkan first: `VriFeature_ShaderAtomicInt64` with
-  `VriDeviceDesc::hasShaderAtomicInt64`, granted from `shaderInt64` and `shaderBufferInt64Atomics`; D3D12 and
-  Metal refuse the request. This covers storage buffers, not 64-bit image atomics. The change is on the local
-  VRI branch `feat/int64-atomics` (one commit, tested on Vulkan here) and is not pushed. libvultra builds VRI from a released archive, so
-  `DeviceFeatures` gains the flag only once a VRI release carries it.
+- **64-bit atomics** go into VRI: `VriFeature_ShaderAtomicInt64` with `VriDeviceDesc::hasShaderAtomicInt64`.
+  Vulkan grants it from `shaderInt64` and `shaderBufferInt64Atomics`, D3D12 from Shader Model 6.6 and
+  `Int64ShaderOps`; both were run here with a 64-bit `InterlockedMax` and `InterlockedAdd`. Metal refuses the
+  request: its shading language has 64-bit min and max only, on newer GPU families, and wiring that through
+  VRI's SPIR-V to MSL translation was not attempted without a Mac to test on. This covers storage buffers, not
+  64-bit image atomics. The change is on the local VRI branch `feat/int64-atomics` and is not pushed.
+  libvultra builds VRI from a released archive, so `DeviceFeatures` gains the flag only once a VRI release
+  carries it.
 - **Sparse textures** are not added to VRI. A technique that needs virtual textures or virtual shadow maps pages
   them in software: physical pages live in an ordinary texture atlas, and a page table (a texture or buffer the
   technique owns) maps virtual pages to atlas tiles, read before every sample. This works on every backend and
