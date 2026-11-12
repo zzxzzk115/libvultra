@@ -41,10 +41,18 @@ from VRI's source only; **not exposed** means VRI has no way to request or use i
 The WebGL2 backend and VRI's D3D12 and OpenGL backends were not audited: libvultra does not build them for
 these techniques.
 
-## Gaps
+## Gaps and decisions
 
-64-bit atomics and sparse textures are missing from VRI on every backend. Both matter to techniques the owner
-plans (visibility buffers with 64-bit depth and payload atomics, virtual shadow maps and virtual textures).
-Variable-rate shading, indirect draws with a count and wave operations are exposed on Vulkan only. Whether to
-add the missing ones to VRI upstream, to define a substitute, or to leave them is decided by the owner; until
-then nothing in libvultra assumes them.
+64-bit atomics and sparse textures are missing from VRI on every backend. Variable-rate shading, indirect draws
+with a count and wave operations are exposed on Vulkan only. The owner decided on 2026-11-12:
+
+- **64-bit atomics** go into VRI, Vulkan first: `VriFeature_ShaderAtomicInt64` with
+  `VriDeviceDesc::hasShaderAtomicInt64`, granted from `shaderInt64` and `shaderBufferInt64Atomics`; D3D12 and
+  Metal refuse the request. This covers storage buffers, not 64-bit image atomics. The change is on the local
+  VRI branch `feat/int64-atomics` (one commit, tested on Vulkan here) and is not pushed. libvultra builds VRI from a released archive, so
+  `DeviceFeatures` gains the flag only once a VRI release carries it.
+- **Sparse textures** are not added to VRI. A technique that needs virtual textures or virtual shadow maps pages
+  them in software: physical pages live in an ordinary texture atlas, and a page table (a texture or buffer the
+  technique owns) maps virtual pages to atlas tiles, read before every sample. This works on every backend and
+  needs nothing from the device; the cost is the indirection and the page-table upkeep, which the technique
+  measures.
