@@ -503,10 +503,19 @@ void callableMain(inout Payload payload)
     support::rejects(invalidWgsl.save(wgslFile), kRejected);
     wgslOptions.rayQuery = true;
     support::rejects(ShaderProgram::compile(source, wgslOptions), kRejected);
-    // The GPU half runs the cook this build's device consumes; the other target must stop before the builder.
-    const bool           deviceWgsl = shaderProfile(Device::defaultGraphicsAPI()) == "wgsl";
-    const ShaderProgram& mismatched = deviceWgsl ? restored : wgslRestored;
-    must((deviceWgsl ? wgsl : program).save(cooked));
+    // The GPU half runs the cook this build's device consumes; a cook for another target must stop before the
+    // builder.
+    const auto           deviceProfile = shaderProfile(Device::defaultGraphicsAPI());
+    const ShaderProgram& mismatched    = deviceProfile == "wgsl" ? restored : wgslRestored;
+    ShaderProgram        deviceProgram = deviceProfile == "wgsl" ? wgsl : program;
+    if (isD3DProfile(deviceProfile))
+    {
+        ShaderCompileOptions deviceOptions;
+        deviceOptions.profile = deviceProfile;
+        deviceOptions.includeDirectories.assign(includes.begin(), includes.end());
+        deviceProgram = must(ShaderProgram::compile(source, deviceOptions));
+    }
+    must(deviceProgram.save(cooked));
     const auto deviceCook    = readBytes(cooked);
     bool       builderCalled = false;
     support::rejects(ShaderPipeline::create(*device,
