@@ -48,6 +48,17 @@ namespace vultra
             return std::span<const std::byte> {begin, size_t(end - begin)};
 #endif
         }
+
+        // FNV-1a of the pack, which names what was extracted from it.
+        std::string packHash(std::span<const std::byte> bytes)
+        {
+            uint64_t hash = 14695981039346656037ull;
+            for (const auto byte : bytes)
+            {
+                hash = (hash ^ std::to_integer<uint8_t>(byte)) * 1099511628211ull;
+            }
+            return std::format("{:016x}", hash);
+        }
     } // namespace
 
     PackagedResources::PackagedResources(std::filesystem::path root, std::string shaderHash) :
@@ -64,11 +75,7 @@ namespace vultra
         {
             return std::unexpected(bytes.error());
         }
-        uint64_t hash = 14695981039346656037ull;
-        for (const auto byte : *bytes)
-        {
-            hash = (hash ^ std::to_integer<uint8_t>(byte)) * 1099511628211ull;
-        }
+        const auto      hash = packHash(*bytes);
         std::error_code error;
         const auto      temporary = std::filesystem::temp_directory_path(error);
         if (error)
@@ -76,8 +83,7 @@ namespace vultra
             return makeError("Query temporary directory: {}", error.message());
         }
         // From here the object owns the directory and removes it on every failure below.
-        PackagedResources resources(temporary / ("vultra-resources-" + StableId::generate().toString()),
-                                    std::format("{:016x}", hash));
+        PackagedResources resources(temporary / ("vultra-resources-" + StableId::generate().toString()), hash);
         std::filesystem::create_directories(resources.m_Root, error);
         if (error)
         {
@@ -143,4 +149,47 @@ namespace vultra
         return m_ShaderHash;
     }
 
+} // namespace vultra
+
+namespace vultra
+{
+    std::expected<std::filesystem::path, Error> extractBuiltinPack(const std::filesystem::path& cache)
+    {
+        const auto bytes = builtinPack();
+        if (!bytes)
+        {
+            return std::unexpected(bytes.error());
+        }
+        const auto      target = cache / packHash(*bytes);
+        std::error_code error;
+        if (std::filesystem::is_directory(target, error))
+        {
+            return target;
+        }
+        // Extracted beside the target and renamed, so a directory of that name is always complete.
+        const auto staging = cache / ("staging-" + StableId::generate().toString());
+        const auto archive = VpkArchive::create(staging, *bytes);
+        if (!archive)
+        {
+            return std::unexpected(archive.error());
+        }
+        if (auto extracted = archive->extractTo(staging); !extracted)
+        {
+            std::filesystem::remove_all(staging, error);
+            return std::unexpected(extracted.error());
+        }
+        std::filesystem::rename(staging, target, error);
+        if (error)
+        {
+            const auto reason = error.message();
+            std::filesystem::remove_all(staging, error);
+            // Another process extracting the same pack finished first.
+            if (std::filesystem::is_directory(target, error))
+            {
+                return target;
+            }
+            return makeError("Extract the builtin pack to {}: {}", target.string(), reason);
+        }
+        return target;
+    }
 } // namespace vultra

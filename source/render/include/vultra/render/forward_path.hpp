@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vultra/render/render_path.hpp>
+#include <vultra/render/scene_materials.hpp>
 #include <vultra/shader/shader_pipeline.hpp>
 
 #include <array>
@@ -10,9 +11,9 @@
 
 namespace vultra
 {
-    // "vultra.forward": the reference render path, the stages vultra.mesh (slot geometry) and
-    // vultra.forward_shading (slot shading). It has no shadows, transparency or mesh shading; those belong to
-    // other paths and stages written against the same public interfaces.
+    // "vultra.forward": the reference render path, the stages vultra.mesh (slot geometry), vultra.forward_shading
+    // (slot shading) and vultra.tone_mapping (slot display). It has no shadows, transparency or mesh shading;
+    // those belong to other paths and stages written against the same public interfaces.
     inline constexpr std::string_view kForwardPath = "vultra.forward";
 
     // "vultra.mesh", a frame stage for the slot geometry: imports the scene's vertex, index and primitive
@@ -67,15 +68,15 @@ namespace vultra
         struct View
         {
             std::unique_ptr<Buffer> frameBuffer;
-            VriDescriptor*          frameView = nullptr;
-            VriDescriptorSet*       frameSet  = nullptr;
+            VriDescriptor*          frameView  = nullptr;
+            VriDescriptor*          cameraView = nullptr; // The path's camera.data of the view.
+            VriDescriptorSet*       frameSet   = nullptr;
             std::vector<uint32_t>   visible;
         };
 
         explicit ForwardShadingStage(Device& device);
         std::expected<void, Error> bindScene(StageBuild& build, Buffer& instances);
         void                       releaseScene();
-        void drawScene(VriCommandBuffer* cmd, const View& view, Buffer& vertices, Buffer& indices);
 
         Device&                  m_Device;
         GpuScene*                m_Scene       = nullptr;
@@ -85,12 +86,19 @@ namespace vultra
         VriPipelineLayout*       m_Layout             = nullptr;
         std::vector<View>        m_Views; // Kept across graphs; a graph uses the first views.size().
         // Per-scene state, rebuilt by addPasses() for view 0.
-        VriDescriptor*                 m_TransformView = nullptr;
-        VriDescriptorPool*             m_Pool          = nullptr;
-        std::vector<VriDescriptorSet*> m_MaterialSets;
-        std::vector<VriDescriptor*>    m_MaterialSamplers;
-        // Indexed by sidedness (bit 0) and mirrored front face (bit 1).
-        std::array<std::unique_ptr<ShaderPipeline>, 4> m_Forward;
-        std::unique_ptr<ShaderPipeline>                m_Skybox;
+        bool                            m_GBuffer       = false; // Whether this graph writes the G-buffer layers.
+        VriDescriptor*                  m_TransformView = nullptr;
+        VriDescriptorPool*              m_Pool          = nullptr; // Frame sets.
+        std::unique_ptr<SceneMaterials> m_Materials;
+
+        // Forward pipelines by sidedness (bit 0) and mirrored front face (bit 1), and the sky behind them.
+        struct Pipelines
+        {
+            std::array<std::unique_ptr<ShaderPipeline>, 4> forward;
+            std::unique_ptr<ShaderPipeline>                skybox;
+        };
+
+        // Writing scene.hdr only (0), or the G-buffer layers too (1).
+        std::array<Pipelines, 2> m_Pipelines;
     };
 } // namespace vultra

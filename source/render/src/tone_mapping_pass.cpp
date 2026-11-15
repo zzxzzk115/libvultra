@@ -1,5 +1,6 @@
 #include <vultra/render/tone_mapping_pass.hpp>
 
+#include <algorithm>
 #include <array>
 #include <utility>
 
@@ -54,7 +55,7 @@ namespace vultra
             device,
             "builtin/shaders/passes/tone_mapping.slang",
             std::vector<ShaderEntry> {{"screenVertex", VriShaderStage_Vertex},
-                                      {"fragmentMain", VriShaderStage_Fragment}},
+                                       {"fragmentMain", VriShaderStage_Fragment}},
             [self](std::span<const VriShaderDesc> stageShaders) -> std::expected<VriPipeline*, Error>
             {
                 const VriColorAttachmentDesc color {.format = self->m_Format, .colorWriteMask = VriColorWrite_RGBA};
@@ -208,6 +209,98 @@ namespace vultra
                         return std::unexpected(pass.error());
                     }
                     return std::unique_ptr<GraphPass>(std::move(*pass));
+                }};
+    }
+} // namespace vultra
+
+namespace vultra
+{
+    namespace
+    {
+        class ToneMappingStage final : public RenderStage
+        {
+        public:
+            explicit ToneMappingStage(const AssetSource* shaders) :
+                m_Shaders(shaders)
+            {
+            }
+
+            std::expected<SceneResources, Error> addPasses(StageBuild& build) override
+            {
+                if (!build.view)
+                {
+                    return makeError("vultra.tone_mapping is a view stage");
+                }
+                const auto input = findSceneResource(build.resources, kSceneOutput);
+                if (!input)
+                {
+                    return std::unexpected(input.error());
+                }
+                // One pass per view: a pass rewrites its descriptor set when it records.
+                if (*build.view == 0 && m_Format != build.displayFormat)
+                {
+                    m_Passes.clear();
+                    m_Format = build.displayFormat;
+                }
+                while (m_Passes.size() <= *build.view)
+                {
+                    auto pass = ToneMappingPass::create(build.graph.device(), m_Format, m_Shaders);
+                    if (!pass)
+                    {
+                        return std::unexpected(pass.error());
+                    }
+                    m_Passes.push_back(std::move(*pass));
+                }
+                const std::array inputs {*input};
+                const auto       color = m_Passes[*build.view]->addPasses(build.graph,
+                                                                    build.graphName("Tone mapping"),
+                                                                    inputs,
+                                                                    m_Parameters);
+                if (!color)
+                {
+                    return std::unexpected(color.error());
+                }
+                return SceneResources {{std::string(kFinal), color->front()}};
+            }
+
+            std::expected<void, Error> prepare(RenderGraph&, const StageFrame& frame) override
+            {
+                if (frame.parameters.size() != m_Parameters.size())
+                {
+                    return makeError("vultra.tone_mapping takes exposure, bypass and operator");
+                }
+                std::ranges::copy(frame.parameters, m_Parameters.begin());
+                return {};
+            }
+
+            void pollShaders() override
+            {
+                for (auto& pass : m_Passes)
+                {
+                    pass->shader().poll();
+                }
+            }
+
+        private:
+            const AssetSource*                            m_Shaders;
+            VriFormat                                     m_Format = VriFormat_Unknown;
+            std::vector<std::unique_ptr<ToneMappingPass>> m_Passes;
+            // Read when the passes record, after prepare() set them for the frame.
+            std::array<double, 3> m_Parameters {0, 0, 0};
+        };
+    } // namespace
+
+    StageType toneMappingStage()
+    {
+        return {{"vultra.tone_mapping",
+                 {std::string(kDisplaySlot)},
+                 StageScope::eView,
+                 {{std::string(kSceneOutput)}},
+                 {{std::string(kFinal), VriFormat_Unknown, "color.display"}},
+                 toneMappingDefinition().parameters},
+                [](Device&, const AssetSource* shaders) -> std::expected<std::unique_ptr<RenderStage>, Error>
+                {
+                    return std::make_unique<ToneMappingStage>(shaders);
                 }};
     }
 } // namespace vultra

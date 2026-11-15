@@ -1,47 +1,26 @@
 #pragma once
 
-#include "lib/depth.slangh"
-#include "lib/ibl.slangh"
-#include "lib/light.slangh"
-#include "lib/shadow.slangh"
-#include "lib/surface_types.slangh"
-
-float3 shadeSurface(SurfaceData sample)
+// Forward shading of one surface with the frame's lights and environment. Include after frame_block.slangh.
+float3 shadeSurface(VultraSurface sample)
 {
     float3 view = normalize(frame.cameraPosition.xyz - sample.worldPosition);
-    float cameraDepth = viewDepth(sample.worldPosition, frame.view);
-    float visibility = shadowVisibility(sample.worldPosition, sample.geometricNormal, cameraDepth);
-    DirectionalLight light;
-    light.directionToLight = frame.lightDirection.xyz;
-    light.radiance = frame.lightColor.rgb * frame.lightDirection.w;
-    OpenPbrSurface surface;
-    surface.baseColor = sample.baseColor;
-    surface.baseWeight = sample.baseWeight;
-    surface.baseMetalness = sample.metallic;
-    surface.specularRoughness = sample.roughness;
-    surface.baseDiffuseRoughness = sample.baseDiffuseRoughness;
-    surface.specularWeight = sample.specularWeight;
-    surface.specularIor = sample.specularIor;
-    surface.specularColor = sample.specularColor;
-    surface.coatWeight = sample.coatWeight;
-    surface.coatRoughness = max(sample.coatRoughness, 0.03);
-    surface.coatIor = sample.coatIor;
-    OpenPBR_PreparedBsdf bsdf = prepareOpenPbr(surface, sample.normal, view);
-    float3 result = evaluateDirectionalLight(bsdf, light, visibility) + sample.emission;
+    VultraBsdf bsdf = vultraPrepareBsdf(sample, view);
+    float3 radiance = frame.lightColor.rgb * frame.lightDirection.w;
+    float3 result   = vultraDirectionalLight(bsdf, frame.lightDirection.xyz, radiance) + sample.emission;
     // Explicit constant fill for raster experiments; it is neither IBL nor shadowed direct light.
     result += frame.ambientColor.rgb * sample.baseColor * sample.occlusion;
     for (uint i = 0; i < uint(frame.lightConfig.x); ++i)
     {
-        // The first directional light uses the existing cascades; other lights are currently unshadowed.
+        // The main directional light is evaluated above through the frame's light fields.
         if (int(i) != int(frame.lightConfig.y))
         {
-            result += evaluateSceneLight(bsdf, sceneLights[i], sample.worldPosition);
+            result += vultraSceneLight(bsdf, sceneLights[i], sample.worldPosition);
         }
     }
     if (frame.options.x > 0.5)
     {
-        float3 ibl = evaluateIbl(surface, sample.normal, view, diffuseMap, specularMap, brdfLut,
-                                 environmentSampler, frame.options.w);
+        float3 ibl = vultraEnvironmentLight(sample, view, diffuseMap, specularMap, brdfLut, environmentSampler,
+                                            frame.options.w);
         result += ibl * frame.lightColor.w * sample.occlusion;
     }
     uint debug = uint(frame.cameraClip.w);
@@ -52,16 +31,6 @@ float3 shadeSurface(SurfaceData sample)
     else if (debug == 2)
     {
         result = sample.normal * 0.5 + 0.5;
-    }
-    else if (debug == 3)
-    {
-        const float3 colors[4] = {float3(1, 0.2, 0.1), float3(0.2, 1, 0.2),
-                                  float3(0.2, 0.4, 1), float3(1, 0.2, 1)};
-        result = colors[shadowCascade(cameraDepth)] * (0.25 + 0.75 * visibility);
-    }
-    else if (debug == 4)
-    {
-        result = visibility.xxx;
     }
     else if (debug == 5)
     {

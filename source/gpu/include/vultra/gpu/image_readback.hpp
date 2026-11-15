@@ -35,8 +35,8 @@ namespace vultra
     };
 
     // Blocking readback between frames. Source needs TransferSrc and initialized contents.
-    // RGBA/BGRA8, RGBA16/32F, R32F and D32F; depth is replicated to RGB and R32F fills red only. Floats stay
-    // floats until savePng quantizes them.
+    // RGBA/BGRA8, RGBA16/32F, RG16F, R32F and D32F; depth is replicated to RGB, RG16F fills red and green and
+    // R32F red only. Floats stay floats until savePng quantizes them.
     [[nodiscard]] std::expected<Image, Error>
     readback(Device& device, Texture& texture, uint32_t mip = 0, uint32_t layer = 0);
 } // namespace vultra

@@ -44,6 +44,7 @@ namespace vultra
                 case VriFormat_BGRA8_SRGB:
                 case VriFormat_D32_SFLOAT:
                 case VriFormat_R32_SFLOAT:
+                case VriFormat_RG16_SFLOAT:
                     return 4;
                 case VriFormat_RGBA16_SFLOAT:
                     return 8;
@@ -176,12 +177,13 @@ namespace vultra
         {
             return makeError("Readback has not been recorded");
         }
-        const auto size   = m_Size;
-        const auto bytes  = m_Staging.desc.size;
-        const bool depth  = m_Format == VriFormat_D32_SFLOAT;
-        const bool red    = m_Format == VriFormat_R32_SFLOAT;
-        const bool bgra   = m_Format == VriFormat_BGRA8_UNORM || m_Format == VriFormat_BGRA8_SRGB;
-        auto&      device = m_Device;
+        const auto size     = m_Size;
+        const auto bytes    = m_Staging.desc.size;
+        const bool depth    = m_Format == VriFormat_D32_SFLOAT;
+        const bool red      = m_Format == VriFormat_R32_SFLOAT;
+        const bool redGreen = m_Format == VriFormat_RG16_SFLOAT;
+        const bool bgra     = m_Format == VriFormat_BGRA8_UNORM || m_Format == VriFormat_BGRA8_SRGB;
+        auto&      device   = m_Device;
         Image      image {size, std::vector<float>(size_t(size.width) * size.height * 4)};
         auto*      data = static_cast<const unsigned char*>(device.core.MapBuffer(m_Staging.handle, 0, bytes));
         if (!data)
@@ -215,6 +217,21 @@ namespace vultra
                         destination[i] = value;
                     }
                     else if (i % 4 == 3)
+                    {
+                        destination[i] = 1;
+                    }
+                }
+                else if (redGreen)
+                {
+                    // Red and green hold the values, alpha is 1 and blue stays 0.
+                    const size_t channel = i % 4;
+                    if (channel < 2)
+                    {
+                        uint16_t value;
+                        std::memcpy(&value, sourceRow + (i / 4) * 4 + channel * 2, 2);
+                        destination[i] = half(value);
+                    }
+                    else if (channel == 3)
                     {
                         destination[i] = 1;
                     }

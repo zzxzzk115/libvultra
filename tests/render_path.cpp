@@ -6,6 +6,7 @@
 #include <vultra/render/rendering_server.hpp>
 #include <vultra/render/scene.hpp>
 #include <vultra/render/texture_blit.hpp>
+#include <vultra/render/tone_mapping_pass.hpp>
 
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
@@ -351,6 +352,198 @@ namespace
             require(renderer.shading->visiblePrimitives() == 1, "Mirrored bounds were incorrectly culled");
             require(mirrored.rgba[center] > 0.5f, "Mirrored primitive was culled");
         }
+    }
+
+    // The G-buffer layers forward shading writes on request: a quad facing the camera, moved and then looked at
+    // from elsewhere, read back against the normal and the motion computed on the CPU. scene.hdr stays what
+    // the path renders without G-buffer layers.
+    void gbufferLayers(vultra::Device& device, vultra::Environment& environment)
+    {
+        using namespace vultra;
+        SceneData scene;
+        scene.vertices   = {{{-1, -1, 0}, {0, 0, 1}, {0, 0}},
+                            {{1, -1, 0}, {0, 0, 1}, {1, 0}},
+                            {{1, 1, 0}, {0, 0, 1}, {1, 1}},
+                            {{-1, 1, 0}, {0, 0, 1}, {0, 1}}};
+        scene.indices    = {0, 1, 2, 0, 2, 3};
+        scene.primitives = {{0, 6, 0}};
+        scene.materials.emplace_back();
+        scene.materials[0].emissionColor     = {0.2f, 0.4f, 0.6f};
+        scene.materials[0].emissionLuminance = 1;
+        scene.radius                         = 2;
+        const auto         gpu               = must(GpuScene::create(device, scene));
+        constexpr uint32_t kSize             = 64;
+        const RenderView   view {"main", {kSize, kSize}};
+        const glm::mat4    projection = glm::perspectiveRH_ZO(glm::radians(45.0f), 1.0f, 0.1f, 10.0f);
+        const auto         cameraAt   = [&](glm::vec3 eye)
+        {
+            return RenderCamera {glm::lookAtRH(eye, eye - glm::vec3(0, 0, 1), glm::vec3(0, 1, 0)),
+                                 projection,
+                                 0.1f,
+                                 10};
+        };
+
+        struct Rendered
+        {
+            Image hdr;
+            Image normal;
+            Image motion;
+        };
+
+        const auto renderWith = [&](std::span<const std::string> requested, std::span<const RenderCamera> cameras)
+        {
+            auto  path               = must(createForwardPath(device));
+            auto* shading            = static_cast<ForwardShadingStage*>(path->stage("shading"));
+            shading->settings.skybox = false;
+            shading->settings.ibl    = false;
+            RenderGraph graph(device);
+            const auto  resources =
+                must(path->addPasses(graph, *gpu, environment, std::span(&view, 1), requested)).front();
+            const auto hdr = must(findSceneResource(resources, kSceneHdr));
+            must(graph.exportResource(hdr));
+            std::optional<RenderGraph::Resource> normal;
+            std::optional<RenderGraph::Resource> motion;
+            if (!requested.empty())
+            {
+                normal = must(findSceneResource(resources, kSceneNormal));
+                motion = must(findSceneResource(resources, kSceneMotion));
+                must(graph.exportResource(*normal));
+                must(graph.exportResource(*motion));
+            }
+            else
+            {
+                require(!findSceneResource(resources, kSceneNormal), "Forward wrote G-buffer layers no one requested");
+            }
+            must(graph.compile());
+            std::vector<Rendered> frames;
+            for (size_t index = 0; index < cameras.size(); ++index)
+            {
+                must(gpu->beginFrame());
+                // Frame 1 moves the quad; frame 2 keeps it and moves the camera.
+                must(gpu->setPrimitiveTransforms(0,
+                                                 1,
+                                                 index == 0 ? glm::mat4(1) :
+                                                              glm::translate(glm::mat4(1), {0.25f, 0, 0})));
+                must(path->prepare(graph, cameras.subspan(index, 1), {}));
+                const auto frame = must(Frame::create(device));
+                auto*      cmd   = must(frame->begin());
+                must(graph.execute(cmd));
+                must(frame->submitAndWait());
+                Rendered rendered {must(readback(device, graph.getTexture(hdr)))};
+                if (normal)
+                {
+                    rendered.normal = must(readback(device, graph.getTexture(*normal)));
+                    rendered.motion = must(readback(device, graph.getTexture(*motion)));
+                }
+                frames.push_back(std::move(rendered));
+            }
+            return frames;
+        };
+        const std::array                 cameras {cameraAt({0, 0, 3}), cameraAt({0, 0, 3}), cameraAt({0.2f, 0.1f, 3})};
+        const std::array<std::string, 2> requested {std::string(kSceneNormal), std::string(kSceneMotion)};
+        const auto                       layered = renderWith(requested, cameras);
+        const auto                       plain   = renderWith({}, cameras);
+        // Where the quad at z = 0 is seen through a pixel centre, and where that point was in the previous frame.
+        const auto expectedMotion =
+            [&](const glm::mat4& current, const glm::mat4& previous, glm::vec3 offset, glm::vec2 pixel)
+        {
+            const glm::vec2 uv = (pixel + 0.5f) / float(kSize);
+            const glm::vec2 ndc {uv.x * 2 - 1, 1 - uv.y * 2};
+            const auto      inverse   = glm::inverse(current);
+            glm::vec4       nearPoint = inverse * glm::vec4(ndc, 0, 1);
+            glm::vec4       farPoint  = inverse * glm::vec4(ndc, 1, 1);
+            nearPoint /= nearPoint.w;
+            farPoint /= farPoint.w;
+            const float     t     = nearPoint.z / (nearPoint.z - farPoint.z);
+            const glm::vec3 point = glm::vec3(nearPoint) + t * glm::vec3(farPoint - nearPoint);
+            const glm::vec4 clip  = previous * glm::vec4(point - offset, 1);
+            return (glm::vec2(clip) / clip.w - ndc) * glm::vec2(0.5f, -0.5f);
+        };
+        const std::array<glm::mat4, 3> viewProjections {projection * cameras[0].view,
+                                                        projection * cameras[1].view,
+                                                        projection * cameras[2].view};
+        const std::array<glm::vec3, 3> offsets {glm::vec3(0), glm::vec3(0.25f, 0, 0), glm::vec3(0)};
+        float                          largest = 0;
+        for (size_t index = 0; index < cameras.size(); ++index)
+        {
+            require(layered[index].hdr.rgba == plain[index].hdr.rgba, "G-buffer layers changed scene.hdr");
+            const auto& previous = viewProjections[index == 0 ? 0 : index - 1];
+            for (const glm::vec2 pixel : {glm::vec2(32, 32), glm::vec2(20, 40), glm::vec2(44, 24)})
+            {
+                const size_t    texel = (size_t(pixel.y) * kSize + size_t(pixel.x)) * 4;
+                const glm::vec3 normal {layered[index].normal.rgba[texel],
+                                        layered[index].normal.rgba[texel + 1],
+                                        layered[index].normal.rgba[texel + 2]};
+                require(glm::all(glm::epsilonEqual(normal, glm::vec3(0, 0, 1), 1e-3f)), "scene.normal is not +Z");
+                const glm::vec2 motion {layered[index].motion.rgba[texel], layered[index].motion.rgba[texel + 1]};
+                const auto      expected = expectedMotion(viewProjections[index], previous, offsets[index], pixel);
+                largest                  = std::max(largest, glm::length(expected));
+                if (!glm::all(glm::epsilonEqual(motion, expected, 2e-3f)))
+                {
+                    std::cerr << "frame " << index << " pixel " << pixel.x << "," << pixel.y << ": motion " << motion.x
+                              << "," << motion.y << " expected " << expected.x << "," << expected.y << "\n";
+                    require(false, "scene.motion differs from the analytic motion");
+                }
+            }
+        }
+        require(largest > 0.03f, "The moves were too small to test scene.motion");
+        std::cout << "G-buffer layers: scene.normal and scene.motion (object and camera, largest " << largest
+                  << " UV) match analytic values; scene.hdr equals the path without layers\n";
+    }
+
+    // The display slot runs after the caller's own passes: final from vultra.tone_mapping equals tone mapping
+    // scene.hdr directly, and a stage parameter set through the path changes it.
+    void displayStage(vultra::Device& device, vultra::Environment& environment)
+    {
+        using namespace vultra;
+        SceneData scene;
+        scene.vertices   = {{{-1, -1, 0}, {0, 0, 1}, {0, 0}},
+                            {{1, -1, 0}, {0, 0, 1}, {1, 0}},
+                            {{0, 1, 0}, {0, 0, 1}, {0.5f, 1}}};
+        scene.indices    = {0, 1, 2};
+        scene.primitives = {{0, 3, 0}};
+        scene.materials.emplace_back();
+        scene.materials[0].emissionColor     = {0.5f, 0.3f, 0.1f};
+        scene.materials[0].emissionLuminance = 1;
+        scene.radius                         = 1;
+        const auto         gpu               = must(GpuScene::create(device, scene));
+        auto               path              = must(createForwardPath(device));
+        const RenderView   view {"main", {48, 48}};
+        const RenderCamera camera {glm::lookAtRH(glm::vec3(0, 0, 3), glm::vec3(0), glm::vec3(0, 1, 0)),
+                                   glm::perspectiveRH_ZO(glm::radians(45.0f), 1.0f, 0.1f, 10.0f),
+                                   0.1f,
+                                   10};
+        RenderGraph        graph(device);
+        const auto         resources = must(path->addPasses(graph, *gpu, environment, std::span(&view, 1))).front();
+        const auto         output    = must(findSceneResource(resources, kSceneOutput));
+        require(output.index == must(findSceneResource(resources, kSceneHdr)).index, "scene.output is not scene.hdr");
+        const auto final     = must(path->addDisplay(graph, std::span(&output, 1), VriFormat_RGBA8_UNORM)).front();
+        auto       reference = must(ToneMappingPass::create(device));
+        const std::array<double, 3> defaults {0, 0, 0};
+        const auto direct = must(reference->addPasses(graph, "Reference", std::span(&output, 1), defaults)).front();
+        must(graph.exportResource(final));
+        must(graph.exportResource(direct));
+        must(graph.compile());
+        const auto renderFrame = [&]
+        {
+            must(path->prepare(graph, std::span(&camera, 1), {}));
+            const auto frame = must(Frame::create(device));
+            auto*      cmd   = must(frame->begin());
+            must(graph.execute(cmd));
+            must(frame->submitAndWait());
+            return std::pair {must(readback(device, graph.getTexture(final))),
+                              must(readback(device, graph.getTexture(direct)))};
+        };
+        const auto [shown, expected] = renderFrame();
+        require(shown.rgba == expected.rgba, "The display stage differs from tone mapping scene.hdr");
+        require(!path->setParameter("display", "exposure", 99), "An exposure outside its range was accepted");
+        must(path->setParameter("display", "exposure", 2));
+        require(must(path->parameter("display", "exposure")) == 2, "The exposure was not kept");
+        const auto [brighter, unchanged] = renderFrame();
+        const size_t center              = (24 * 48 + 24) * 4;
+        require(brighter.rgba[center] > shown.rgba[center] + 0.05f && unchanged.rgba == expected.rgba,
+                "The display exposure parameter did not change final alone");
+        std::cout << "Display slot: final equals tone mapping scene.output; display.exposure changes it\n";
     }
 
     // A point light has no main-light fields to travel through: it reaches the shader only as a record of the
@@ -1137,6 +1330,7 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
         const std::vector<StageDesc> stages {
             meshStage().desc,
             forwardShadingStage().desc,
+            toneMappingStage().desc,
             {"test.gbuffer",
              {"visibility", "surface"},
              StageScope::eView,
@@ -1187,6 +1381,13 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
                                               {"direct", "test.direct"},
                                               {"compose", "test.compose"}};
         require(issues(deferred).empty(), "A path with a two-slot stage and an optional need did not validate");
+        // Without a stage that provides scene.output, the display slot reads scene.hdr; it must come last.
+        auto displayed = deferred;
+        displayed.push_back({std::string(kDisplaySlot), "vultra.tone_mapping"});
+        require(issues(displayed).empty(), "The display slot did not read scene.hdr as scene.output");
+        displayed.insert(displayed.begin() + 4, {std::string(kDisplaySlot), "vultra.tone_mapping"});
+        displayed.pop_back();
+        expect(displayed, PathIssueKind::eDisplayNotLast, 4, "must be the last one");
 
         expect({{"geometry", "vultra.mesh"}, {"shading", "test.missing"}},
                PathIssueKind::eUnknownStage,
@@ -1354,6 +1555,8 @@ int main()
     constantAmbient(device, environment);
     emptyGpuScene(device, environment);
     livePrimitiveTransform(device, environment, directory);
+    gbufferLayers(device, environment);
+    displayStage(device, environment);
     sceneLightBuffer(device, environment);
     materialReference(device, environment);
     materialTextures(device, environment, vultra::TextureFormat::eBc5Unorm);

@@ -1,36 +1,47 @@
 #pragma once
 
-#include "resources/scene_lights.slangh"
-
 struct FrameData
 {
     float4x4 viewProjection;
     float4x4 inverseViewProjection;
     float4x4 view;
-    float4x4 lightViewProjection[4];
     float4   cameraPosition;
     float4   lightDirection;
     float4   lightColor;
     float4   ambientColor;
-    float4   cascadeSplits;
-    float4   cascadeWidths;
-    float4   cascadeDepthRanges;
-    float4   shadowParameters;
     float4   options;
     float4   cameraClip;
     float4   overrides; // Roughness, metalness, display transfer, meshlet display palette.
     float4   lightConfig; // Light count, index of the main directional light (-1 if absent).
 };
 
+// The path's camera.data of the view; keep in sync with CameraData in vultra/render/render_path.hpp.
+struct CameraData
+{
+    float4x4 view;
+    float4x4 projection;
+    float4x4 viewProjection;
+    float4x4 inverseView;
+    float4x4 inverseProjection;
+    float4x4 inverseViewProjection;
+    float4x4 previousViewProjection;
+    float4   position;
+    float2   imageSize;
+    float2   jitter;
+    float    nearPlane;
+    float    farPlane;
+    float2   padding;
+};
+
+// Forward shading's frame. Include after `import vultra.material;`, which declares LightData and
+// PrimitiveTransform. Only the bindings a shader of this block uses exist, so a stage stays within WebGPU's
+// 16 sampled textures per shader stage together with the material block.
 [[vk::binding(0, 0)]] ConstantBuffer<FrameData> frame;
-[[vk::binding(1, 0)]] Texture2D<float>          shadow0;
-[[vk::binding(2, 0)]] Texture2D<float>          shadow1;
-[[vk::binding(3, 0)]] Texture2D<float>          shadow2;
-[[vk::binding(4, 0)]] Texture2D<float>          shadow3;
+[[vk::binding(1, 0)]] ConstantBuffer<CameraData> camera;
 [[vk::binding(5, 0)]] Texture2D<float4>         radianceMap;
 [[vk::binding(6, 0)]] Texture2D<float4>         diffuseMap;
 [[vk::binding(7, 0)]] Texture2D<float4>         specularMap;
 [[vk::binding(8, 0)]] Texture2D<float4>         brdfLut;
-[[vk::binding(9, 0)]] Texture2D<float4>         hdrColor;
 [[vk::binding(10, 0)]] SamplerState             environmentSampler;
+[[vk::binding(19, 0)]] StructuredBuffer<PrimitiveTransform> primitiveTransforms;
 [[vk::binding(20, 0)]] StructuredBuffer<LightData> sceneLights;

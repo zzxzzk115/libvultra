@@ -166,7 +166,19 @@ frame's view projection, position, image size and clip planes, written by `prepa
 `vultra.forward` is the reference path, made of two stages: `vultra.mesh` (slot `geometry`, frame) imports the
 scene's vertex, index and primitive transform buffers as `scene.vertices`, `scene.indices` and
 `scene.instances`; `vultra.forward_shading` (slot `shading`, view) draws a skybox and one opaque OpenPBR forward
-pass with analytic lights and image-based lighting. It has no shadows, transparency or mesh shading. Deferred,
+pass with analytic lights and image-based lighting. It has no shadows, transparency or mesh shading. A stage returns
+what `StageBuild::requested` names and may leave out other resources it provides: forward shading writes the
+surface layers (`scene.normal` to `scene.motion`) only when something reads one. Motion compares each primitive
+with where the previous frame drew it, so a host calls `GpuScene::beginFrame()` once per frame. Stages that
+rasterize the scene with its materials use `SceneMaterials` and the Slang module `vultra.material`. The `display`
+slot comes last: `RenderPath::addPasses` stops before it and gives `scene.output` (`scene.hdr` without an upscale
+stage), the caller appends its own passes, and `RenderPath::addDisplay` turns their image into `final`;
+`vultra.tone_mapping` is the reference display stage. Every path also imports the environment's textures
+(`scene.environment`, `_diffuse`, `_specular`, `_brdf`) once per frame, so passes after the geometry can light with
+them. The builtin pack carries the sources of `vultra.material` with its cooked passes; `extractBuiltinPack()`
+writes the pack once per content hash, and its `builtin/shaders` and `external` are the include roots of programs
+that compile shaders importing it. Stage parameters (`StageDesc::parameters`) are changed with
+`RenderPath::setParameter` and reach the stage in `StageFrame::parameters`. Deferred,
 clustered or shadowed rendering are other stages and paths, written against the same public interfaces.
 `ToneMappingPass`, `Environment` and `TextureBlit` are independent of the path.
 

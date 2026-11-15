@@ -18,7 +18,7 @@ namespace vultra
 {
     namespace
     {
-        static_assert(sizeof(PrimitiveTransform) == 144 && offsetof(PrimitiveTransform, properties) == 128);
+        static_assert(sizeof(PrimitiveTransform) == 208 && offsetof(PrimitiveTransform, previousModel) == 144);
 
         // Per-primitive queries take indices from the scene's own primitive table; any other index is a bug.
         void requirePrimitive(uint32_t index, size_t count)
@@ -72,7 +72,8 @@ namespace vultra
             }
             return PrimitiveTransform {model,
                                        glm::mat4(glm::transpose(glm::inverse(linear))),
-                                       {determinant < 0 ? -1.0f : 1.0f, sphereScale, 0, 0}};
+                                       {determinant < 0 ? -1.0f : 1.0f, sphereScale, 0, 0},
+                                       model};
         }
 
         std::optional<VriAddressMode> addressMode(SamplerAddressMode mode)
@@ -241,6 +242,7 @@ namespace vultra
         result->transforms = std::make_unique<Buffer>(std::move(*transforms));
         result->m_Mirrored.resize(scene.primitives.size());
         result->m_Transforms.resize(scene.primitives.size());
+        result->m_PreviousTransforms.resize(scene.primitives.size());
         if (auto initialized = result->setPrimitiveTransforms(0, uint32_t(scene.primitives.size()), glm::mat4(1));
             !initialized)
         {
@@ -342,12 +344,12 @@ namespace vultra
         {
             return makeError("Primitive transform range");
         }
-        const auto transformed = transformData(transform);
+        auto transformed = transformData(transform);
         if (!transformed)
         {
             return std::unexpected(transformed.error());
         }
-        const auto&     data = *transformed;
+        auto&           data = *transformed;
         const glm::mat3 absoluteLinear {glm::abs(glm::vec3(transform[0])),
                                         glm::abs(glm::vec3(transform[1])),
                                         glm::abs(glm::vec3(transform[2]))};
@@ -368,6 +370,12 @@ namespace vultra
         }
         for (uint32_t index = 0; index < count; ++index)
         {
+            auto& previous = m_PreviousTransforms[first + index];
+            if (!m_FrameStarted)
+            {
+                previous = transform;
+            }
+            data.previousModel = previous;
             std::memcpy(mapped + uint64_t(index) * sizeof(data), &data, sizeof(data));
             m_Mirrored[first + index]    = data.properties.x < 0;
             m_Transforms[first + index]  = transform;
@@ -395,6 +403,33 @@ namespace vultra
     uint64_t GpuScene::transformRevision() const
     {
         return m_TransformRevision;
+    }
+
+    std::expected<void, Error> GpuScene::beginFrame()
+    {
+        m_FrameStarted = true;
+        if (m_PreviousTransforms == m_Transforms)
+        {
+            return {};
+        }
+        auto* mapped = static_cast<std::byte*>(
+            m_Device.core.MapBuffer(transforms->handle, 0, primitives.size() * sizeof(PrimitiveTransform)));
+        if (!mapped)
+        {
+            return makeError("Map primitive transforms");
+        }
+        for (size_t index = 0; index < primitives.size(); ++index)
+        {
+            if (m_PreviousTransforms[index] != m_Transforms[index])
+            {
+                m_PreviousTransforms[index] = m_Transforms[index];
+                std::memcpy(mapped + index * sizeof(PrimitiveTransform) + offsetof(PrimitiveTransform, previousModel),
+                            &m_Transforms[index],
+                            sizeof(glm::mat4));
+            }
+        }
+        m_Device.core.UnmapBuffer(transforms->handle);
+        return {};
     }
 
     const PrimitiveBounds& GpuScene::primitiveBounds(uint32_t index) const

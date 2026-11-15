@@ -6,6 +6,5 @@ struct PrimitiveTransform
     float4x4 model;
     float4x4 normal;
     float4   properties; // Tangent handedness, conservative sphere scale.
+    float4x4 previousModel; // The model where the previous frame drew the primitive.
 };
-
-[[vk::binding(19, 0)]] StructuredBuffer<PrimitiveTransform> primitiveTransforms;

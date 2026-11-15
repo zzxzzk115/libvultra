@@ -1,23 +1,19 @@
 #pragma once
 
 #include "lib/openpbr.slangh"
-#include "resources/frame_block.slangh"
+#include "resources/scene_lights.slangh"
 
-struct DirectionalLight
-{
-    float3 directionToLight;
-    float3 radiance;
-};
-
-float3 evaluateDirectionalLight(OpenPBR_PreparedBsdf bsdf, DirectionalLight light, float visibility)
+// Reflected radiance of a directional light of `radiance` arriving from the unit direction `toLight`.
+float3 vultraDirectionalLight(OpenPBR_PreparedBsdf bsdf, float3 toLight, float3 radiance)
 {
     // Upstream eval returns BSDF times the incident cosine.
-    OpenPBR_DiffuseSpecular response = openpbr_eval(bsdf, light.directionToLight);
-    return openpbr_get_sum_of_diffuse_specular(response) * light.radiance * visibility;
+    OpenPBR_DiffuseSpecular response = openpbr_eval(bsdf, toLight);
+    return openpbr_get_sum_of_diffuse_specular(response) * radiance;
 }
 
-// Point/spot intensity follows inverse-square falloff with a smooth finite-range cutoff.
-float3 evaluateSceneLight(OpenPBR_PreparedBsdf bsdf, LightData light, float3 position)
+// Reflected radiance of one light of the scene light buffer at `position`. Point and spot intensity follows
+// inverse-square falloff with a smooth finite-range cutoff.
+float3 vultraSceneLight(OpenPBR_PreparedBsdf bsdf, LightData light, float3 position)
 {
     float3 direction = light.directionKind.xyz;
     float attenuation = 1;

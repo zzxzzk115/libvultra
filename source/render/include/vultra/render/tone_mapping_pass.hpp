@@ -2,6 +2,7 @@
 
 #include <vultra/core/base/error.hpp>
 #include <vultra/graph/pass_catalog.hpp>
+#include <vultra/render/render_path.hpp>
 #include <vultra/shader/shader_pipeline.hpp>
 
 #include <expected>
@@ -38,4 +39,8 @@ namespace vultra
     };
 
     PassDefinition toneMappingDefinition();
+
+    // "vultra.tone_mapping", the default stage of the display slot: tone maps scene.output into final, sRGB-encoded
+    // for a UNORM display format and linear for RGBA16_SFLOAT. Parameters exposure, bypass and operator.
+    StageType toneMappingStage();
 } // namespace vultra

@@ -22,11 +22,19 @@ struct MaterialData
 [[vk::binding(4, 1)]] Texture2D<float4>            emissionTexture;
 [[vk::binding(5, 1)]] Texture2D<float4>            specularTexture;
 [[vk::binding(6, 1)]] Texture2D<float4>            specularColorTexture;
-[[vk::binding(7, 1)]] SamplerState                 materialSamplers[7];
+// One sampler per texture: WebGPU has no binding arrays.
+[[vk::binding(7, 1)]] SamplerState                 baseColorSampler;
+[[vk::binding(8, 1)]] SamplerState                 metallicRoughnessSampler;
+[[vk::binding(9, 1)]] SamplerState                 normalSampler;
+[[vk::binding(10, 1)]] SamplerState                occlusionSampler;
+[[vk::binding(11, 1)]] SamplerState                emissionSampler;
+[[vk::binding(12, 1)]] SamplerState                specularSampler;
+[[vk::binding(13, 1)]] SamplerState                specularColorSampler;
 
-float4 readBaseColor(float2 uv, float4 color)
+// The base color of the bound material at `uv`; discards a fragment below its alpha cutoff.
+float4 vultraBaseColor(float2 uv, float4 color)
 {
-    float4 result = baseColorTexture.Sample(materialSamplers[0], uv) * material.baseColor * color;
+    float4 result = baseColorTexture.Sample(baseColorSampler, uv) * material.baseColor * color;
     if (result.a < material.flags.x)
     {
         discard;
@@ -49,7 +57,7 @@ float3 surfaceNormal(SurfaceVertex input)
     }
     tangent *= rsqrt(tangentLength);
     float3 bitangent = input.tangent.w * cross(normal, tangent);
-    float3 mapped    = normalTexture.Sample(materialSamplers[2], input.uv).xyz * 2 - 1;
+    float3 mapped    = normalTexture.Sample(normalSampler, input.uv).xyz * 2 - 1;
     if (material.flags.w > 1.5)
     {
         mapped.z = sqrt(saturate(1 - dot(mapped.xy, mapped.xy))); // BC5 stores only X and Y.

@@ -184,7 +184,32 @@ namespace vultra
             }
             files.emplace_back(*entry, outputFile);
         }
-        // Ship upstream attribution with the compiled implementation, without compiler inputs.
+        // The sources of vultra.material and what it includes, so that programs compile shaders importing it with
+        // builtin/shaders and external of the extracted pack as include roots.
+        for (const auto* directory :
+             {"builtin/shaders/vultra", "builtin/shaders/lib", "builtin/shaders/resources", "external/openpbr"})
+        {
+            const auto sources = regularFiles(*engine / directory);
+            if (!sources)
+            {
+                return std::unexpected(sources.error());
+            }
+            for (const auto& source : *sources)
+            {
+                const auto extension = source.extension();
+                if (extension != ".slang" && extension != ".slangh" && extension != ".h")
+                {
+                    continue;
+                }
+                auto file = sourceFile(*engine, pathText(source.lexically_relative(*engine)));
+                if (!file)
+                {
+                    return std::unexpected(file.error());
+                }
+                files.push_back(std::move(*file));
+            }
+        }
+        // Ship upstream attribution with the compiled implementation and the sources.
         std::vector<std::string> attributions {"external/vrf_fbx_license.txt",
                                                "external/flip/LICENSE",
                                                "external/flip/README.vultra.md"};

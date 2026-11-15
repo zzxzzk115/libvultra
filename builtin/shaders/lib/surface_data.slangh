@@ -1,17 +1,15 @@
 #pragma once
 
-#include "resources/frame_block.slangh"
-#include "resources/primitive_transform.slangh"
-
 #include "lib/surface_types.slangh"
 #include "resources/gpu_material.slangh"
+#include "resources/primitive_transform.slangh"
 
-SurfaceVertex transformSurfaceVertex(MeshVertex input)
+// A scene vertex placed in the world by its primitive's transform and projected by `viewProjection`.
+SurfaceVertex vultraTransformVertex(MeshVertex input, PrimitiveTransform instance, float4x4 viewProjection)
 {
     SurfaceVertex result;
-    PrimitiveTransform instance = primitiveTransforms[material.instance.x];
     result.worldPosition = mul(instance.model, float4(input.position, 1)).xyz;
-    result.position      = mul(frame.viewProjection, float4(result.worldPosition, 1));
+    result.position      = mul(viewProjection, float4(result.worldPosition, 1));
     result.normal        = mul(instance.normal, float4(input.normal, 0)).xyz;
     result.uv            = input.uv;
     result.color         = input.color;
@@ -20,11 +18,12 @@ SurfaceVertex transformSurfaceVertex(MeshVertex input)
     return result;
 }
 
-SurfaceData sampleSurface(SurfaceVertex input, bool frontFace, float3 baseColor)
+// The surface the bound material gives an interpolated vertex; `baseColor` is vultraBaseColor().rgb.
+VultraSurface vultraSampleSurface(SurfaceVertex input, bool frontFace, float3 baseColor)
 {
-    SurfaceData result;
+    VultraSurface result;
     float faceSign = frontFace ? 1 : -1;
-    float2 mr = metallicRoughnessTexture.Sample(materialSamplers[1], input.uv).bg;
+    float2 mr = metallicRoughnessTexture.Sample(metallicRoughnessSampler, input.uv).bg;
     result.worldPosition = input.worldPosition;
     result.geometricNormal = normalize(input.normal) * faceSign;
     result.normal = surfaceNormal(input) * faceSign;
@@ -32,18 +31,10 @@ SurfaceData sampleSurface(SurfaceVertex input, bool frontFace, float3 baseColor)
     result.baseWeight = material.flags.y;
     result.metallic = saturate(material.surface.x * mr.x);
     result.roughness = clamp(material.surface.y * mr.y, 0.03, 1);
-    if (frame.overrides.x >= 0)
-    {
-        result.roughness = clamp(frame.overrides.x, 0.03, 1);
-    }
-    if (frame.overrides.y >= 0)
-    {
-        result.metallic = saturate(frame.overrides.y);
-    }
-    result.emission = emissionTexture.Sample(materialSamplers[4], input.uv).rgb * material.emission.rgb;
-    result.occlusion = lerp(1, occlusionTexture.Sample(materialSamplers[3], input.uv).r, material.emission.w);
-    result.specularColor = material.specular.rgb * specularColorTexture.Sample(materialSamplers[6], input.uv).rgb;
-    result.specularWeight = material.coat.w * specularTexture.Sample(materialSamplers[5], input.uv).a;
+    result.emission = emissionTexture.Sample(emissionSampler, input.uv).rgb * material.emission.rgb;
+    result.occlusion = lerp(1, occlusionTexture.Sample(occlusionSampler, input.uv).r, material.emission.w);
+    result.specularColor = material.specular.rgb * specularColorTexture.Sample(specularColorSampler, input.uv).rgb;
+    result.specularWeight = material.coat.w * specularTexture.Sample(specularSampler, input.uv).a;
     result.specularIor = material.surface.z;
     result.coatWeight = material.coat.x;
     result.coatRoughness = material.coat.y;

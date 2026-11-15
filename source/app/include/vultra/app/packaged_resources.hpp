@@ -32,6 +32,10 @@ namespace vultra
         std::string           m_ShaderHash;
     };
 
+    // Extracts the executable's embedded engine pack into `cache`/<content hash> once and returns that directory.
+    // Its builtin/shaders and external are the include roots of shaders that `import vultra.material;`.
+    [[nodiscard]] std::expected<std::filesystem::path, Error> extractBuiltinPack(const std::filesystem::path& cache);
+
     // Existing shader paths are relative to the extracted engine root. Keep this scope outside GPU objects.
     // Moving transfers the duty to restore the previous working directory.
     class ScopedWorkingDirectory

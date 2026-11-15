@@ -2,6 +2,7 @@
 #include <vultra/render/forward_path.hpp>
 #include <vultra/render/openpbr_luts.hpp>
 #include <vultra/render/scene.hpp>
+#include <vultra/render/tone_mapping_pass.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -13,87 +14,65 @@ namespace vultra
 {
     namespace
     {
-        // Keep these layouts in sync with builtin/shaders/resources/frame_block.slangh. The shared block also
-        // carries shadow-cascade fields for paths that render shadows; this path leaves them disabled.
+        // Keep these layouts in sync with builtin/shaders/resources/frame_block.slangh.
         struct FrameData
         {
-            glm::mat4                viewProjection;
-            glm::mat4                inverseViewProjection;
-            glm::mat4                view;
-            std::array<glm::mat4, 4> lightViewProjection;
-            glm::vec4                cameraPosition;
-            glm::vec4                lightDirection; // xyz to the main light, w intensity.
-            glm::vec4                lightColor;     // rgb main light, w environment intensity.
-            glm::vec4                ambientColor;
-            glm::vec4                cascadeSplits;
-            glm::vec4                cascadeWidths;
-            glm::vec4                cascadeDepthRanges;
-            glm::vec4                shadowParameters; // w = 0 disables shadow sampling.
-            glm::vec4                options;          // IBL, skybox, unused, specular mip count - 1.
-            glm::vec4                cameraClip;       // near, far, unused, debug mode.
-            glm::vec4                overrides;        // Negative roughness/metalness keep materials.
-            glm::vec4                lightConfig;      // Count, main directional index (-1 if absent).
+            glm::mat4 viewProjection;
+            glm::mat4 inverseViewProjection;
+            glm::mat4 view;
+            glm::vec4 cameraPosition;
+            glm::vec4 lightDirection; // xyz to the main light, w intensity.
+            glm::vec4 lightColor;     // rgb main light, w environment intensity.
+            glm::vec4 ambientColor;
+            glm::vec4 options;     // IBL, skybox, unused, specular mip count - 1.
+            glm::vec4 cameraClip;  // near, far, unused, debug mode.
+            glm::vec4 overrides;   // Negative roughness/metalness keep materials.
+            glm::vec4 lightConfig; // Count, main directional index (-1 if absent).
         };
 
-        struct MaterialData
-        {
-            glm::vec4  baseColor;
-            glm::vec4  surface;
-            glm::vec4  emission;
-            glm::vec4  coat;
-            glm::vec4  specular;
-            glm::vec4  flags;
-            glm::uvec4 meshlets;
-            glm::uvec4 instance; // Primitive transform index.
-        };
-
-        static_assert(offsetof(FrameData, lightConfig) == 624 && sizeof(FrameData) == 640);
-        static_assert(sizeof(MaterialData) == 128);
+        static_assert(offsetof(FrameData, lightConfig) == 304 && sizeof(FrameData) == 320);
         static_assert(sizeof(SceneVertex) == 64 && offsetof(SceneVertex, tangent) == 48);
 
-        constexpr uint32_t kFrameBindings = 21;
+        // The bindings of frame_block.slangh and openpbr_luts.slangh in set 0, in range order: frame constants,
+        // camera constants, radiance, diffuse, specular, BRDF LUT, environment sampler, OpenPBR tables,
+        // primitive transforms, scene lights.
+        constexpr VriShaderStageFlags                    kFrameStages = VriShaderStage_Vertex | VriShaderStage_Fragment;
+        constexpr std::array<VriDescriptorRangeDesc, 10> kFrameRanges {{
+            {0, 1, VriDescriptorType_ConstantBuffer, kFrameStages},
+            {1, 1, VriDescriptorType_ConstantBuffer, kFrameStages},
+            {5, 1, VriDescriptorType_Texture, kFrameStages},
+            {6, 1, VriDescriptorType_Texture, kFrameStages},
+            {7, 1, VriDescriptorType_Texture, kFrameStages},
+            {8, 1, VriDescriptorType_Texture, kFrameStages},
+            {10, 1, VriDescriptorType_Sampler, kFrameStages},
+            {11, 1, VriDescriptorType_Texture, kFrameStages},
+            {19, 1, VriDescriptorType_StructuredBuffer, VriShaderStage_Vertex},
+            {20, 1, VriDescriptorType_StructuredBuffer, VriShaderStage_Fragment},
+        }};
+        constexpr uint32_t                               kFrameTextureCount = 5;
 
-        std::array<glm::vec4, 6> frustumPlanes(const glm::mat4& matrix)
+        // scene.hdr and the G-buffer layers, in the order of the shaders' GBufferOutput.
+        struct Target
         {
-            const glm::vec4 x {matrix[0][0], matrix[1][0], matrix[2][0], matrix[3][0]};
-            const glm::vec4 y {matrix[0][1], matrix[1][1], matrix[2][1], matrix[3][1]};
-            const glm::vec4 z {matrix[0][2], matrix[1][2], matrix[2][2], matrix[3][2]};
-            const glm::vec4 w {matrix[0][3], matrix[1][3], matrix[2][3], matrix[3][3]};
-            std::array      planes {w + x, w - x, w + y, w - y, z, w - z}; // VRI depth is [0,1].
-            for (auto& plane : planes)
-            {
-                const float length = glm::length(glm::vec3(plane));
-                if (length > 0)
-                {
-                    plane /= length;
-                }
-            }
-            return planes;
-        }
+            std::string_view name;
+            VriFormat        format;
+            std::string_view semantic;
+        };
 
-        bool intersects(const PrimitiveBounds& bounds, const std::array<glm::vec4, 6>& planes)
-        {
-            for (const auto& plane : planes)
-            {
-                const glm::vec3 normal(plane);
-                const auto      support =
-                    glm::dot(normal, bounds.center) + plane.w + glm::dot(glm::abs(normal), bounds.extent);
-                // Keep touching boxes despite float transform/clip-plane roundoff.
-                const auto margin = 1e-4f * (1 + glm::dot(glm::abs(normal), glm::abs(bounds.center) + bounds.extent));
-                if (support < -margin)
-                {
-                    return false;
-                }
-            }
-            return true;
-        }
+        constexpr std::array<Target, 6> kTargets {{{kSceneHdr, VriFormat_RGBA16_SFLOAT, "color.linear.hdr"},
+                                                   {kSceneNormal, VriFormat_RGBA16_SFLOAT, "normal.world"},
+                                                   {kSceneAlbedo, VriFormat_RGBA8_SRGB, "color.albedo"},
+                                                   {kSceneMaterial, VriFormat_RGBA8_UNORM, "material.orm"},
+                                                   {kSceneEmission, VriFormat_RGBA16_SFLOAT, "color.emission"},
+                                                   {kSceneMotion, VriFormat_RG16_SFLOAT, "motion.screen"}}};
 
         std::expected<VriPipeline*, Error> createPipeline(Device&                        device,
                                                           VriPipelineLayout*             layout,
                                                           std::span<const VriShaderDesc> shaders,
                                                           bool                           mesh,
                                                           bool                           doubleSided,
-                                                          bool                           mirrored)
+                                                          bool                           mirrored,
+                                                          bool                           gbuffer)
         {
             VriVertexStreamDesc    stream {sizeof(SceneVertex), 0, VriVertexStepRate_PerVertex};
             VriVertexAttributeDesc attributes[5] {};
@@ -102,9 +81,12 @@ namespace vultra
             attributes[2] = {.format = VriFormat_RG32_SFLOAT, .offset = offsetof(SceneVertex, uv)};
             attributes[3] = {.format = VriFormat_RGBA32_SFLOAT, .offset = offsetof(SceneVertex, color)};
             attributes[4] = {.format = VriFormat_RGBA32_SFLOAT, .offset = offsetof(SceneVertex, tangent)};
-            VriColorAttachmentDesc color {};
-            color.format         = VriFormat_RGBA16_SFLOAT;
-            color.colorWriteMask = VriColorWrite_RGBA;
+            std::array<VriColorAttachmentDesc, kTargets.size()> colors {};
+            for (size_t index = 0; index < colors.size(); ++index)
+            {
+                colors[index].format         = kTargets[index].format;
+                colors[index].colorWriteMask = VriColorWrite_RGBA;
+            }
             VriGraphicsPipelineDesc desc {};
             desc.pipelineCache  = device.pipelineCache;
             desc.pipelineLayout = layout;
@@ -123,8 +105,8 @@ namespace vultra
             desc.rasterization.frontFace = mirrored ? VriFrontFace_Clockwise : VriFrontFace_CounterClockwise;
             desc.rasterization.lineWidth = 1;
             desc.multisample.sampleNum   = 1;
-            desc.outputMerger.colors     = &color;
-            desc.outputMerger.colorNum   = 1;
+            desc.outputMerger.colors     = colors.data();
+            desc.outputMerger.colorNum   = gbuffer ? uint32_t(colors.size()) : 1;
             VriPipeline* result          = nullptr;
             if (auto created = check(device.core.CreateGraphicsPipeline(device.handle, &desc, &result),
                                      "Create forward path pipeline");
@@ -133,6 +115,40 @@ namespace vultra
                 return std::unexpected(created.error());
             }
             return result;
+        }
+
+        // Begins rendering into `targets` and `depth` over the whole extent. Targets are cleared to zero when
+        // `clearTargets` is set and kept otherwise; depth is cleared to the far plane.
+        void beginTargets(Device&                         device,
+                          VriCommandBuffer*               cmd,
+                          std::span<VriDescriptor* const> targets,
+                          VriDescriptor*                  depth,
+                          Extent                          extent,
+                          bool                            clearTargets)
+        {
+            std::array<VriAttachmentDesc, kTargets.size()> colors {};
+            for (size_t index = 0; index < targets.size(); ++index)
+            {
+                colors[index].view    = targets[index];
+                colors[index].loadOp  = clearTargets ? VriAttachmentLoadOp_Clear : VriAttachmentLoadOp_Load;
+                colors[index].storeOp = VriAttachmentStoreOp_Store;
+            }
+            VriAttachmentDesc depthAttachment {};
+            depthAttachment.view                          = depth;
+            depthAttachment.loadOp                        = VriAttachmentLoadOp_Clear;
+            depthAttachment.storeOp                       = VriAttachmentStoreOp_Store;
+            depthAttachment.clearValue.depthStencil.depth = 1;
+            VriAttachmentsDesc attachments {};
+            attachments.colors     = colors.data();
+            attachments.colorNum   = uint32_t(targets.size());
+            attachments.depth      = depth ? &depthAttachment : nullptr;
+            attachments.renderArea = {0, 0, extent.width, extent.height};
+            attachments.layerNum   = 1;
+            device.core.CmdBeginRendering(cmd, &attachments);
+            const VriViewport viewport {0, 0, float(extent.width), float(extent.height), 0, 1};
+            const VriRect     scissor {0, 0, extent.width, extent.height};
+            device.core.CmdSetViewports(cmd, &viewport, 1);
+            device.core.CmdSetScissors(cmd, &scissor, 1);
         }
 
         VriSamplerDesc repeatSampler()
@@ -201,15 +217,21 @@ namespace vultra
 
     StageType forwardShadingStage()
     {
+        std::vector<SceneResourceDesc> provides;
+        for (const auto& target : kTargets)
+        {
+            provides.push_back({std::string(target.name), target.format, std::string(target.semantic)});
+        }
+        provides.push_back({std::string(kSceneDepth), VriFormat_D32_SFLOAT, "depth"});
         return {{std::string(ForwardShadingStage::kName),
                  {"shading"},
                  StageScope::eView,
                  {{std::string(kSceneVertices)},
                   {std::string(kSceneIndices)},
                   {std::string(kSceneInstances)},
-                  {std::string(kSceneLights)}},
-                 {{std::string(kSceneHdr), VriFormat_RGBA16_SFLOAT, "color.linear.hdr"},
-                  {std::string(kSceneDepth), VriFormat_D32_SFLOAT, "depth"}}},
+                  {std::string(kSceneLights)},
+                  {std::string(kCameraData)}},
+                 std::move(provides)},
                 [](Device& device, const AssetSource* shaders) -> std::expected<std::unique_ptr<RenderStage>, Error>
                 {
                     auto stage = ForwardShadingStage::create(device, shaders);
@@ -224,12 +246,14 @@ namespace vultra
     RenderPathDesc forwardPathDesc()
     {
         return {std::string(kForwardPath),
-                {{"geometry", "vultra.mesh"}, {"shading", std::string(ForwardShadingStage::kName)}}};
+                {{"geometry", "vultra.mesh"},
+                 {"shading", std::string(ForwardShadingStage::kName)},
+                 {std::string(kDisplaySlot), "vultra.tone_mapping"}}};
     }
 
     std::expected<std::unique_ptr<RenderPath>, Error> createForwardPath(Device& device, const AssetSource* shaders)
     {
-        const std::array stages {meshStage(), forwardShadingStage()};
+        const std::array stages {meshStage(), forwardShadingStage(), toneMappingStage()};
         return RenderPath::create(device, forwardPathDesc(), stages, shaders);
     }
 
@@ -260,31 +284,16 @@ namespace vultra
             return std::unexpected(created.error());
         }
 
-        const VriShaderStageFlags stages = VriShaderStage_Vertex | VriShaderStage_Fragment;
-        VriDescriptorRangeDesc    frameRanges[kFrameBindings] {};
-        for (uint32_t i = 0; i < kFrameBindings; ++i)
-        {
-            frameRanges[i] = {i, 1, VriDescriptorType_Texture, stages};
-        }
-        frameRanges[0].descriptorType  = VriDescriptorType_ConstantBuffer;
-        frameRanges[10].descriptorType = VriDescriptorType_Sampler;
-        frameRanges[19]                = {19, 1, VriDescriptorType_StructuredBuffer, VriShaderStage_Vertex};
-        frameRanges[20]                = {20, 1, VriDescriptorType_StructuredBuffer, VriShaderStage_Fragment};
-        VriDescriptorRangeDesc materialRanges[kMaterialTextureCount + 1] {};
-        for (uint32_t i = 0; i <= kMaterialTextureCount; ++i)
-        {
-            materialRanges[i] = {i, 1, VriDescriptorType_Texture, VriShaderStage_Fragment};
-        }
-        materialRanges[kMaterialTextureCount].descriptorType = VriDescriptorType_Sampler;
-        materialRanges[kMaterialTextureCount].descriptorNum  = kMaterialTextureCount;
-        VriDescriptorSetDesc sets[2] {{0, frameRanges, kFrameBindings}, {1, materialRanges, kMaterialTextureCount + 1}};
-        VriPushConstantDesc  push {0, sizeof(MaterialData), stages};
+        const auto            materialRanges = SceneMaterials::ranges();
+        VriDescriptorSetDesc  sets[2] {{0, kFrameRanges.data(), uint32_t(kFrameRanges.size())},
+                                       {SceneMaterials::kSet, materialRanges.data(), uint32_t(materialRanges.size())}};
+        const auto            push = SceneMaterials::constants();
         VriPipelineLayoutDesc layout {};
         layout.descriptorSets   = sets;
         layout.descriptorSetNum = 2;
         layout.pushConstants    = &push;
         layout.pushConstantNum  = 1;
-        layout.shaderStages     = stages;
+        layout.shaderStages     = kFrameStages;
         if (auto created = check(device.core.CreatePipelineLayout(device.handle, &layout, &stage->m_Layout),
                                  "Create forward shading layout");
             !created)
@@ -293,36 +302,51 @@ namespace vultra
         }
 
         auto*      self     = stage.get();
-        const auto pipeline = [&](const char* file, bool mesh, bool doubleSided, bool mirrored)
+        const auto pipeline = [&](const char* file, bool mesh, bool doubleSided, bool mirrored, bool gbuffer)
         {
+            const char* vertex = "screenVertex";
+            if (mesh)
+            {
+                vertex = gbuffer ? "vertexGBuffer" : "vertexMain";
+            }
             return ShaderPipeline::create(
                 device,
                 std::filesystem::path("builtin/shaders/passes") / file,
-                std::vector<ShaderEntry> {{mesh ? "vertexMain" : "screenVertex", VriShaderStage_Vertex},
-                                          {"fragmentMain", VriShaderStage_Fragment}},
-                [self, mesh, doubleSided, mirrored](std::span<const VriShaderDesc> stageShaders)
+                std::vector<ShaderEntry> {{vertex, VriShaderStage_Vertex},
+                                          {gbuffer ? "fragmentGBuffer" : "fragmentMain", VriShaderStage_Fragment}},
+                [self, mesh, doubleSided, mirrored, gbuffer](std::span<const VriShaderDesc> stageShaders)
                 {
-                    return createPipeline(self->m_Device, self->m_Layout, stageShaders, mesh, doubleSided, mirrored);
+                    return createPipeline(self->m_Device,
+                                          self->m_Layout,
+                                          stageShaders,
+                                          mesh,
+                                          doubleSided,
+                                          mirrored,
+                                          gbuffer);
                 },
                 "builtin/shaders",
                 std::vector<std::filesystem::path> {"builtin/shaders", "external"},
                 shaders);
         };
-        for (uint32_t variant = 0; variant < stage->m_Forward.size(); ++variant)
+        for (const bool gbuffer : {false, true})
         {
-            auto forward = pipeline("forward.slang", true, (variant & 1) != 0, (variant & 2) != 0);
-            if (!forward)
+            auto& pipelines = stage->m_Pipelines[gbuffer ? 1 : 0];
+            for (uint32_t variant = 0; variant < pipelines.forward.size(); ++variant)
             {
-                return std::unexpected(forward.error());
+                auto forward = pipeline("forward.slang", true, (variant & 1) != 0, (variant & 2) != 0, gbuffer);
+                if (!forward)
+                {
+                    return std::unexpected(forward.error());
+                }
+                pipelines.forward[variant] = std::move(*forward);
             }
-            stage->m_Forward[variant] = std::move(*forward);
+            auto skybox = pipeline("skybox.slang", false, true, false, gbuffer);
+            if (!skybox)
+            {
+                return std::unexpected(skybox.error());
+            }
+            pipelines.skybox = std::move(*skybox);
         }
-        auto skybox = pipeline("skybox.slang", false, true, false);
-        if (!skybox)
-        {
-            return std::unexpected(skybox.error());
-        }
-        stage->m_Skybox = std::move(*skybox);
         return stage;
     }
 
@@ -336,13 +360,16 @@ namespace vultra
             {
                 m_Device.core.DestroyDescriptor(view.frameView);
             }
+            if (view.cameraView)
+            {
+                m_Device.core.DestroyDescriptor(view.cameraView);
+            }
         }
         m_Views.clear();
-        for (auto& pipeline : m_Forward)
+        for (auto& pipelines : m_Pipelines)
         {
-            pipeline.reset();
+            pipelines = {};
         }
-        m_Skybox.reset();
         if (m_EnvironmentSampler)
         {
             m_Device.core.DestroyDescriptor(m_EnvironmentSampler);
@@ -362,15 +389,7 @@ namespace vultra
             m_Device.core.DestroyDescriptorPool(m_Pool);
             m_Pool = nullptr;
         }
-        for (auto* sampler : m_MaterialSamplers)
-        {
-            if (sampler)
-            {
-                m_Device.core.DestroyDescriptor(sampler);
-            }
-        }
-        m_MaterialSamplers.clear();
-        m_MaterialSets.clear();
+        m_Materials.reset();
         if (m_TransformView)
         {
             m_Device.core.DestroyDescriptor(m_TransformView);
@@ -427,24 +446,17 @@ namespace vultra
         {
             return created;
         }
-        // Sampler 0 is the default; scene sampler i is stored at i + 1.
-        m_MaterialSamplers.resize(scene.samplers.size() + 1);
-        for (size_t i = 0; i < m_MaterialSamplers.size(); ++i)
+        auto materials = SceneMaterials::create(m_Device, m_Layout, scene);
+        if (!materials)
         {
-            const auto desc = i == 0 ? repeatSampler() : scene.samplers[i - 1];
-            if (auto created = check(m_Device.core.CreateSampler(m_Device.handle, &desc, &m_MaterialSamplers[i]),
-                                     "Create material sampler");
-                !created)
-            {
-                return created;
-            }
+            return std::unexpected(materials.error());
         }
-        const auto            count = uint32_t(scene.materials.size());
+        m_Materials = std::move(*materials);
         VriDescriptorPoolDesc pool {};
-        pool.descriptorSetMaxNum    = count + viewCount;
-        pool.textureMaxNum          = count * kMaterialTextureCount + kFrameBindings * viewCount;
-        pool.samplerMaxNum          = count * kMaterialTextureCount + viewCount;
-        pool.constantBufferMaxNum   = viewCount;
+        pool.descriptorSetMaxNum    = viewCount;
+        pool.textureMaxNum          = kFrameTextureCount * viewCount;
+        pool.samplerMaxNum          = viewCount;
+        pool.constantBufferMaxNum   = 2 * viewCount; // Frame and camera constants.
         pool.structuredBufferMaxNum = 2 * viewCount; // Primitive transforms and scene lights.
         if (auto created = check(m_Device.core.CreateDescriptorPool(m_Device.handle, &pool, &m_Pool),
                                  "Create forward shading pool");
@@ -461,49 +473,6 @@ namespace vultra
             {
                 return allocated;
             }
-        }
-        m_MaterialSets.resize(count);
-        if (count != 0)
-        {
-            if (auto allocated =
-                    check(m_Device.core.AllocateDescriptorSets(m_Pool, m_Layout, 1, m_MaterialSets.data(), count),
-                          "Allocate material sets");
-                !allocated)
-            {
-                return allocated;
-            }
-        }
-        for (uint32_t material = 0; material < count; ++material)
-        {
-            const auto&                  source = scene.materials[material];
-            const MaterialTexture        slots[] {source.baseColorTexture,
-                                                  source.metallicRoughnessTexture,
-                                                  source.normalTexture,
-                                                  source.occlusionTexture,
-                                                  source.emissionTexture,
-                                                  source.specularTexture,
-                                                  source.specularColorTexture};
-            const VriDescriptor*         textures[kMaterialTextureCount] {};
-            const VriDescriptor*         samplers[kMaterialTextureCount] {};
-            VriDescriptorRangeUpdateDesc updates[kMaterialTextureCount + 1] {};
-            for (uint32_t slot = 0; slot < kMaterialTextureCount; ++slot)
-            {
-                if (slots[slot].sampler < -1 ||
-                    (slots[slot].sampler >= 0 && size_t(slots[slot].sampler) >= scene.samplers.size()))
-                {
-                    return makeError("Invalid material sampler index");
-                }
-                const auto view = scene.materialTextures[material][slot]->view();
-                if (!view)
-                {
-                    return std::unexpected(view.error());
-                }
-                textures[slot] = *view;
-                samplers[slot] = m_MaterialSamplers[size_t(slots[slot].sampler + 1)];
-                updates[slot]  = {&textures[slot], 1};
-            }
-            updates[kMaterialTextureCount] = {samplers, kMaterialTextureCount};
-            m_Device.core.UpdateDescriptorRanges(m_MaterialSets[material], 0, kMaterialTextureCount + 1, updates);
         }
         return {};
     }
@@ -539,12 +508,52 @@ namespace vultra
         {
             return fail(Error {"vultra.forward_shading builds view 0 first"});
         }
-        const auto size = build.views[*build.view].size;
-        const auto hdr =
-            build.graph.createTexture(build.graphName(kSceneHdr), colorTexture(size, VriFormat_RGBA16_SFLOAT));
-        if (!hdr)
+        const auto camera = findSceneResource(build.resources, kCameraData);
+        if (!camera)
         {
-            return fail(hdr.error());
+            return fail(camera.error());
+        }
+        auto& view = m_Views[*build.view];
+        if (view.cameraView)
+        {
+            m_Device.core.DestroyDescriptor(view.cameraView);
+            view.cameraView = nullptr;
+        }
+        const VriBufferViewDesc cameraView {build.graph.getBuffer(*camera).handle,
+                                            VriDescriptorType_ConstantBuffer,
+                                            VriFormat_Unknown,
+                                            0,
+                                            sizeof(CameraData)};
+        if (auto created = check(m_Device.core.CreateBufferView(m_Device.handle, &cameraView, &view.cameraView),
+                                 "Create camera constants view");
+            !created)
+        {
+            return fail(created.error());
+        }
+        // The G-buffer layers are written only when someone reads one of them; then all of them are.
+        if (*build.view == 0)
+        {
+            m_GBuffer = std::any_of(kTargets.begin() + 1,
+                                    kTargets.end(),
+                                    [&build](const Target& target)
+                                    {
+                                        return build.requests(target.name);
+                                    });
+        }
+        const auto                         size = build.views[*build.view].size;
+        const auto                         used = std::span(kTargets).first(m_GBuffer ? kTargets.size() : 1);
+        std::vector<RenderGraph::Resource> targets;
+        SceneResources                     provided;
+        for (const auto& target : used)
+        {
+            const auto texture =
+                build.graph.createTexture(build.graphName(target.name), colorTexture(size, target.format));
+            if (!texture)
+            {
+                return fail(texture.error());
+            }
+            targets.push_back(*texture);
+            provided.push_back({std::string(target.name), *texture});
         }
         auto depthDesc = depthTexture(size);
         depthDesc.usage |= VriTextureUsage_TransferSrc;
@@ -553,25 +562,47 @@ namespace vultra
         {
             return fail(depth.error());
         }
-        const auto  color         = *hdr;
+        provided.push_back({std::string(kSceneDepth), *depth});
         const auto  depthResource = *depth;
-        const auto* view          = &m_Views[*build.view];
-        const auto  skybox        = build.graph.addPass(
-            build.graphName("Skybox"),
-            {{color, Usage::eColorWrite, true}},
-            [this, color, view](VriCommandBuffer* cmd, RenderGraph& resources) -> std::expected<void, Error>
+        const auto* frameView     = &view;
+        const auto* pipelines     = &m_Pipelines[m_GBuffer ? 1 : 0];
+        // Views of the targets in GBufferOutput order.
+        const auto targetViews = [targets](RenderGraph& resources) -> std::expected<std::vector<VriDescriptor*>, Error>
+        {
+            std::vector<VriDescriptor*> views;
+            for (const auto target : targets)
             {
-                auto&      target    = resources.getTexture(color);
-                const auto colorView = target.view();
-                if (!colorView)
+                const auto targetView = resources.getTexture(target).view();
+                if (!targetView)
                 {
-                    return std::unexpected(colorView.error());
+                    return std::unexpected(targetView.error());
                 }
-                const float clear[4] {0, 0, 0, 1};
-                beginColorPass(m_Device, cmd, *colorView, {target.desc.width, target.desc.height}, clear);
+                views.push_back(*targetView);
+            }
+            return views;
+        };
+        std::vector<RenderGraph::Use> skyUses;
+        for (const auto target : targets)
+        {
+            skyUses.push_back({target, Usage::eColorWrite, true});
+        }
+        skyUses.push_back({*camera, Usage::eConstantBuffer});
+        const auto skybox = build.graph.addPass(
+            build.graphName("Skybox"),
+            std::move(skyUses),
+            [this, targets, targetViews, frameView, pipelines](VriCommandBuffer* cmd,
+                                                               RenderGraph& resources) -> std::expected<void, Error>
+            {
+                const auto views = targetViews(resources);
+                if (!views)
+                {
+                    return std::unexpected(views.error());
+                }
+                const auto& target = resources.getTexture(targets.front());
+                beginTargets(m_Device, cmd, *views, nullptr, {target.desc.width, target.desc.height}, true);
                 m_Device.core.CmdSetPipelineLayout(cmd, m_Layout);
-                m_Device.core.CmdSetPipeline(cmd, m_Skybox->handle());
-                m_Device.core.CmdSetDescriptorSet(cmd, 0, view->frameSet);
+                m_Device.core.CmdSetPipeline(cmd, pipelines->skybox->handle());
+                m_Device.core.CmdSetDescriptorSet(cmd, 0, frameView->frameSet);
                 const VriDrawDesc draw {3, 1, 0, 0};
                 m_Device.core.CmdDraw(cmd, &draw);
                 m_Device.core.CmdEndRendering(cmd);
@@ -581,52 +612,48 @@ namespace vultra
         {
             return fail(skybox.error());
         }
-        const auto vertexBuffer = *vertices;
-        const auto indexBuffer  = *indices;
-        const auto forward      = build.graph.addPass(
+        const auto                    vertexBuffer = *vertices;
+        const auto                    indexBuffer  = *indices;
+        std::vector<RenderGraph::Use> forwardUses;
+        for (const auto target : targets)
+        {
+            forwardUses.push_back({target, Usage::eColorReadWrite});
+        }
+        forwardUses.push_back({depthResource, Usage::eDepthWrite, true});
+        forwardUses.push_back({vertexBuffer, Usage::eVertexBuffer});
+        forwardUses.push_back({indexBuffer, Usage::eIndexBuffer});
+        forwardUses.push_back({*instances, Usage::eStorageRead});
+        forwardUses.push_back({*lights, Usage::eStorageRead});
+        forwardUses.push_back({*camera, Usage::eConstantBuffer});
+        const auto forward = build.graph.addPass(
             build.graphName("Forward"),
-            {{color, Usage::eColorReadWrite},
-                  {depthResource, Usage::eDepthWrite, true},
-                  {vertexBuffer, Usage::eVertexBuffer},
-                  {indexBuffer, Usage::eIndexBuffer},
-                  {*instances, Usage::eStorageRead},
-                  {*lights, Usage::eStorageRead}},
-            [this, color, depthResource, view, vertexBuffer, indexBuffer](VriCommandBuffer* cmd, RenderGraph& resources)
-                -> std::expected<void, Error>
+            std::move(forwardUses),
+            [this, targets, targetViews, depthResource, frameView, pipelines, vertexBuffer, indexBuffer](
+                VriCommandBuffer* cmd,
+                RenderGraph&      resources) -> std::expected<void, Error>
             {
-                auto&      target    = resources.getTexture(color);
-                const auto colorView = target.view();
-                if (!colorView)
+                const auto views = targetViews(resources);
+                if (!views)
                 {
-                    return std::unexpected(colorView.error());
+                    return std::unexpected(views.error());
                 }
                 const auto depthView = resources.getTexture(depthResource).view();
                 if (!depthView)
                 {
                     return std::unexpected(depthView.error());
                 }
-                const Extent      extent {target.desc.width, target.desc.height};
-                VriAttachmentDesc colorAttachment {};
-                colorAttachment.view    = *colorView;
-                colorAttachment.loadOp  = VriAttachmentLoadOp_Load;
-                colorAttachment.storeOp = VriAttachmentStoreOp_Store;
-                VriAttachmentDesc depthAttachment {};
-                depthAttachment.view                          = *depthView;
-                depthAttachment.loadOp                        = VriAttachmentLoadOp_Clear;
-                depthAttachment.storeOp                       = VriAttachmentStoreOp_Store;
-                depthAttachment.clearValue.depthStencil.depth = 1;
-                VriAttachmentsDesc attachments {};
-                attachments.colors     = &colorAttachment;
-                attachments.colorNum   = 1;
-                attachments.depth      = &depthAttachment;
-                attachments.renderArea = {0, 0, extent.width, extent.height};
-                attachments.layerNum   = 1;
-                m_Device.core.CmdBeginRendering(cmd, &attachments);
-                const VriViewport viewport {0, 0, float(extent.width), float(extent.height), 0, 1};
-                const VriRect     scissor {0, 0, extent.width, extent.height};
-                m_Device.core.CmdSetViewports(cmd, &viewport, 1);
-                m_Device.core.CmdSetScissors(cmd, &scissor, 1);
-                drawScene(cmd, *view, resources.getBuffer(vertexBuffer), resources.getBuffer(indexBuffer));
+                const auto& target = resources.getTexture(targets.front());
+                beginTargets(m_Device, cmd, *views, *depthView, {target.desc.width, target.desc.height}, false);
+                const std::array forwardPipelines {pipelines->forward[0]->handle(),
+                                                   pipelines->forward[1]->handle(),
+                                                   pipelines->forward[2]->handle(),
+                                                   pipelines->forward[3]->handle()};
+                m_Materials->draw(cmd,
+                                  resources.getBuffer(vertexBuffer),
+                                  resources.getBuffer(indexBuffer),
+                                  frameView->visible,
+                                  forwardPipelines,
+                                  frameView->frameSet);
                 m_Device.core.CmdEndRendering(cmd);
                 return {};
             });
@@ -634,49 +661,7 @@ namespace vultra
         {
             return fail(forward.error());
         }
-        return SceneResources {{std::string(kSceneHdr), color}, {std::string(kSceneDepth), depthResource}};
-    }
-
-    void ForwardShadingStage::drawScene(VriCommandBuffer* cmd, const View& view, Buffer& vertices, Buffer& indices)
-    {
-        m_Device.core.CmdSetPipelineLayout(cmd, m_Layout);
-        const VriVertexBufferBinding binding {vertices.handle, 0};
-        m_Device.core.CmdSetVertexBuffers(cmd, 0, &binding, 1);
-        m_Device.core.CmdSetIndexBuffer(cmd, indices.handle, 0, VriIndexType_UInt32);
-        VriPipeline* activePipeline = nullptr;
-        for (const uint32_t index : view.visible)
-        {
-            const auto&    primitive = m_Scene->primitives[index];
-            const auto&    material  = m_Scene->materials[primitive.material];
-            const uint32_t variant   = (material.doubleSided ? 1u : 0u) + (m_Scene->primitiveMirrored(index) ? 2u : 0u);
-            auto*          pipeline  = m_Forward[variant]->handle();
-            if (pipeline != activePipeline)
-            {
-                m_Device.core.CmdSetPipeline(cmd, pipeline);
-                m_Device.core.CmdSetDescriptorSet(cmd, 0, view.frameSet);
-                activePipeline = pipeline;
-            }
-            float normalMode = 0;
-            if (material.normalTexture.image >= 0)
-            {
-                // Two-channel normal maps reconstruct Z in the shader.
-                const auto format = m_Scene->materialTextures[primitive.material][2]->desc.format;
-                normalMode        = format == VriFormat_BC5_UNORM || format == VriFormat_RG8_UNORM ? 2.0f : 1.0f;
-            }
-            const MaterialData parameters {
-                material.baseColor,
-                {material.baseMetalness, material.specularRoughness, material.specularIor, material.normalScale},
-                {material.emissionColor * material.emissionLuminance, material.occlusionStrength},
-                {material.coatWeight, material.coatRoughness, material.coatIor, material.specularWeight},
-                {material.specularColor, material.baseDiffuseRoughness},
-                {material.alphaCutoff, material.baseWeight, 0, normalMode},
-                {0, 0, 0, 0},
-                {index, 0, 0, 0}};
-            m_Device.core.CmdSetConstants(cmd, 0, &parameters, sizeof(parameters));
-            m_Device.core.CmdSetDescriptorSet(cmd, 1, m_MaterialSets[primitive.material]);
-            const VriDrawIndexedDesc draw {primitive.indexCount, 1, primitive.firstIndex, 0, 0};
-            m_Device.core.CmdDrawIndexed(cmd, &draw);
-        }
+        return provided;
     }
 
     std::expected<void, Error> ForwardShadingStage::prepare(RenderGraph& graph, const StageFrame& frame)
@@ -722,15 +707,7 @@ namespace vultra
         data.cameraClip = {camera.nearPlane, camera.farPlane, 0, float(settings.debugMode)};
         data.overrides  = {-1, -1, 0, 0};
 
-        view.visible.clear();
-        const auto planes = frustumPlanes(data.viewProjection);
-        for (uint32_t index = 0; index < m_Scene->primitives.size(); ++index)
-        {
-            if (m_Scene->primitives[index].indexCount && intersects(m_Scene->primitiveBounds(index), planes))
-            {
-                view.visible.push_back(index);
-            }
-        }
+        m_Materials->cull(data.viewProjection, view.visible);
 
         auto* mapped = m_Device.core.MapBuffer(view.frameBuffer->handle, 0, sizeof(data));
         if (!mapped)
@@ -740,8 +717,6 @@ namespace vultra
         std::memcpy(mapped, &data, sizeof(data));
         m_Device.core.UnmapBuffer(view.frameBuffer->handle);
 
-        // The shared frame block declares shadow, HDR and G-buffer slots this stage never samples;
-        // every slot still needs a valid view.
         static_cast<void>(graph);
         const std::array                            textures {m_Environment->radiance.get(),
                                    m_Environment->diffuse.get(),
@@ -758,32 +733,36 @@ namespace vultra
             }
             views[i] = *textureView;
         }
-        const VriDescriptor* descriptors[kFrameBindings] {};
-        std::ranges::fill(descriptors, views[0]);
-        descriptors[0]  = view.frameView;
-        descriptors[6]  = views[1];
-        descriptors[7]  = views[2];
-        descriptors[8]  = views[3];
-        descriptors[10] = m_EnvironmentSampler;
-        descriptors[11] = views[4];
-        descriptors[19] = m_TransformView;
-        descriptors[20] = lightBuffer.view();
-        VriDescriptorRangeUpdateDesc updates[kFrameBindings] {};
-        for (uint32_t i = 0; i < kFrameBindings; ++i)
+        // In the order of kFrameRanges.
+        const std::array<const VriDescriptor*, kFrameRanges.size()>   descriptors {view.frameView,
+                                                                                 view.cameraView,
+                                                                                 views[0],
+                                                                                 views[1],
+                                                                                 views[2],
+                                                                                 views[3],
+                                                                                 m_EnvironmentSampler,
+                                                                                 views[4],
+                                                                                 m_TransformView,
+                                                                                 lightBuffer.view()};
+        std::array<VriDescriptorRangeUpdateDesc, kFrameRanges.size()> updates {};
+        for (size_t i = 0; i < updates.size(); ++i)
         {
             updates[i] = {&descriptors[i], 1};
         }
-        m_Device.core.UpdateDescriptorRanges(view.frameSet, 0, kFrameBindings, updates);
+        m_Device.core.UpdateDescriptorRanges(view.frameSet, 0, uint32_t(updates.size()), updates.data());
         return {};
     }
 
     void ForwardShadingStage::pollShaders()
     {
-        for (auto& pipeline : m_Forward)
+        for (auto& pipelines : m_Pipelines)
         {
-            pipeline->poll();
+            for (auto& pipeline : pipelines.forward)
+            {
+                pipeline->poll();
+            }
+            pipelines.skybox->poll();
         }
-        m_Skybox->poll();
     }
 
     uint32_t ForwardShadingStage::visiblePrimitives(uint32_t view) const

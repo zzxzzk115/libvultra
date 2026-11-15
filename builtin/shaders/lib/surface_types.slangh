@@ -1,6 +1,6 @@
 #pragma once
 
-struct SurfaceData
+struct VultraSurface
 {
     float3 worldPosition;
     float3 normal;
