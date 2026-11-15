@@ -3,6 +3,7 @@
 #include "shader_file_system.hpp"
 
 #include <vultra/core/base/logger.hpp>
+#include <vultra/gpu/device.hpp>
 #include <vultra/shader/shader_compiler.hpp>
 
 #include <slang-com-ptr.h>
@@ -234,6 +235,7 @@ namespace vultra
         program.rayQuery     = rayQuery;
         program.capabilities = compileOptions.capabilities;
         const bool wgsl      = program.profile == "wgsl";
+        const bool d3d       = isD3DProfile(program.profile);
         if (wgsl && rayQuery)
         {
             return makeError("WGSL does not support ray-query shaders");
@@ -308,14 +310,42 @@ namespace vultra
             }
         }
         slang::TargetDesc target {};
-        target.format  = wgsl ? SLANG_WGSL : SLANG_SPIRV;
-        target.profile = wgsl ? SLANG_PROFILE_UNKNOWN : global->findProfile(program.profile.c_str());
-        if (!wgsl && (!program.profile.starts_with("spirv_") || target.profile == SLANG_PROFILE_UNKNOWN))
+        target.format  = SLANG_SPIRV;
+        target.profile = SLANG_PROFILE_UNKNOWN;
+        if (wgsl)
         {
-            return makeError("Unsupported SPIR-V profile: {}", program.profile);
+            target.format = SLANG_WGSL;
+        }
+        else
+        {
+            // Slang emits DXIL through the DirectX Shader Compiler (dxcompiler.dll), loaded at run time.
+            if (d3d)
+            {
+                target.format = SLANG_DXIL;
+                // Only a D3D12 build compiles Slang's DXIL support in (external/xmake.lua). Slang reports a missing
+                // dxcompiler.dll and missing DXIL support alike, so the build tells them apart.
+                if (Device::defaultGraphicsAPI() != VriGraphicsAPI_D3D12)
+                {
+                    return makeError(
+                        "Compiling {} needs a libvultra_graphics_api=d3d12 build, the only one whose Slang "
+                        "has DXIL support",
+                        program.profile);
+                }
+                if (SLANG_FAILED(global->checkCompileTargetSupport(SLANG_DXIL)))
+                {
+                    return makeError("Compiling {} needs the DirectX Shader Compiler: dxcompiler.dll was not found "
+                                     "on PATH or beside the executable",
+                                     program.profile);
+                }
+            }
+            target.profile = global->findProfile(program.profile.c_str());
+            if ((!d3d && !program.profile.starts_with("spirv_")) || target.profile == SLANG_PROFILE_UNKNOWN)
+            {
+                return makeError("Unsupported shader profile: {}", program.profile);
+            }
         }
         std::vector<slang::CompilerOptionEntry> options;
-        if (!wgsl)
+        if (!wgsl && !d3d)
         {
             for (const auto name :
                  {slang::CompilerOptionName::VulkanUseEntryPointName, slang::CompilerOptionName::EmitSpirvDirectly})
@@ -647,7 +677,7 @@ namespace vultra
             ComPtr<slang::IBlob> code;
             diagnostics.setNull();
             result = linked->getEntryPointCode(SlangInt(i), 0, code.writeRef(), diagnostics.writeRef());
-            if (auto emitted = diagnose(result, diagnostics, wgsl ? "Emit WGSL" : "Emit SPIR-V"); !emitted)
+            if (auto emitted = diagnose(result, diagnostics, wgsl ? "Emit WGSL" : "Emit bytecode"); !emitted)
             {
                 return std::unexpected(emitted.error());
             }
@@ -665,11 +695,11 @@ namespace vultra
             {
                 if (code->getBufferSize() % sizeof(uint32_t) != 0)
                 {
-                    return makeError("Slang emitted misaligned SPIR-V: {}", shader.entry.name);
+                    return makeError("Slang emitted misaligned bytecode: {}", shader.entry.name);
                 }
                 shader.words.resize(code->getBufferSize() / sizeof(uint32_t));
                 std::memcpy(shader.words.data(), code->getBufferPointer(), code->getBufferSize());
-                if (compileOptions.optimize)
+                if (compileOptions.optimize && !d3d)
                 {
                     auto optimized = optimizeSpirv(shader.words, shader.entry.name);
                     if (!optimized)

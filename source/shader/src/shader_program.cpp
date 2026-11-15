@@ -47,17 +47,27 @@ namespace vultra
 
     std::string shaderProfile(VriGraphicsAPI api)
     {
-        return api == VriGraphicsAPI_WebGPU ? "wgsl" : "spirv_1_5";
+        if (api == VriGraphicsAPI_WebGPU)
+        {
+            return "wgsl";
+        }
+        // Shader model 6.6 covers mesh shading, ray queries, wave operations and 64-bit atomics.
+        return api == VriGraphicsAPI_D3D12 ? "sm_6_6" : "spirv_1_5";
     }
 
     std::expected<void, Error> detail::validateShaderProgram(const ShaderProgram& program, const VriDeviceDesc& device)
     {
         // VRI's Metal and GL backends consume SPIR-V through their own SPIRV-Cross path.
-        const bool compatible =
-            program.profile == "wgsl" ?
-                device.graphicsAPI == VriGraphicsAPI_WebGPU :
-                (device.graphicsAPI == VriGraphicsAPI_Vulkan || device.graphicsAPI == VriGraphicsAPI_Metal ||
-                 device.graphicsAPI == VriGraphicsAPI_OpenGL || device.graphicsAPI == VriGraphicsAPI_OpenGLES);
+        bool compatible = device.graphicsAPI == VriGraphicsAPI_Vulkan || device.graphicsAPI == VriGraphicsAPI_Metal ||
+                          device.graphicsAPI == VriGraphicsAPI_OpenGL || device.graphicsAPI == VriGraphicsAPI_OpenGLES;
+        if (program.profile == "wgsl")
+        {
+            compatible = device.graphicsAPI == VriGraphicsAPI_WebGPU;
+        }
+        else if (isD3DProfile(program.profile))
+        {
+            compatible = device.graphicsAPI == VriGraphicsAPI_D3D12;
+        }
         if (!compatible)
         {
             return makeError("Device backend cannot consume shader target: {}", program.profile);
@@ -76,8 +86,8 @@ namespace vultra
     std::expected<void, Error> detail::validateShaderProgram(const ShaderProgram& program)
     {
         const bool wgsl = program.profile == "wgsl";
-        if ((!wgsl && !program.profile.starts_with("spirv_")) || program.profile.size() > 64 ||
-            (wgsl && program.rayQuery))
+        if ((!wgsl && !program.profile.starts_with("spirv_") && !isD3DProfile(program.profile)) ||
+            program.profile.size() > 64 || (wgsl && program.rayQuery))
         {
             return makeError("Unsupported shader target: {}", program.profile);
         }
@@ -104,10 +114,11 @@ namespace vultra
                     return makeError("Invalid WGSL shader: {}", name);
                 }
             }
-            else if (!shader.wgsl.empty() || shader.words.size() < 5 || shader.words.front() != 0x07230203 ||
+            else if (!shader.wgsl.empty() || shader.words.size() < 5 ||
+                     shader.words.front() != bytecodeMagic(program.profile) ||
                      shader.words.size() > kMaxFileSize / sizeof(uint32_t))
             {
-                return makeError("Invalid SPIR-V bytecode: {}", name);
+                return makeError("Invalid {} bytecode: {}", program.profile, name);
             }
         }
         return {};

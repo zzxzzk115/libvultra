@@ -242,9 +242,10 @@ namespace vultra::detail
                 return makeError("Invalid cooked shader compiler metadata");
             }
             const bool wgsl = program.profile == "wgsl";
-            if ((!wgsl && !program.profile.starts_with("spirv_")) || program.profile.size() > 64 ||
-                !document.at("ray_query").is_boolean() || !document.at("entries").is_array() ||
-                document.at("entries").empty() || document.at("entries").size() > 256)
+            if ((!wgsl && !program.profile.starts_with("spirv_") && !isD3DProfile(program.profile)) ||
+                program.profile.size() > 64 || !document.at("ray_query").is_boolean() ||
+                !document.at("entries").is_array() || document.at("entries").empty() ||
+                document.at("entries").size() > 256)
             {
                 return makeError("Unsupported cooked shader program");
             }
@@ -285,9 +286,9 @@ namespace vultra::detail
                 {
                     return makeError("Invalid cooked fragment output count");
                 }
-                if (!wgsl && shader.words.front() != 0x07230203)
+                if (!wgsl && shader.words.front() != bytecodeMagic(program.profile))
                 {
-                    return makeError("Invalid cooked SPIR-V: {}", name);
+                    return makeError("Invalid cooked {} code: {}", program.profile, name);
                 }
                 program.shaders.push_back(std::move(shader));
             }

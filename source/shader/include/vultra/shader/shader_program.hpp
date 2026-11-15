@@ -152,8 +152,21 @@ namespace vultra
         bool optimize = false;
     };
 
-    // The compile profile a device of `api` consumes: WGSL for WebGPU, SPIR-V otherwise.
+    // The compile profile a device of `api` consumes: WGSL for WebGPU, DXIL for D3D12, SPIR-V otherwise.
     std::string shaderProfile(VriGraphicsAPI api);
+
+    // D3D12 profiles are Slang shader models (sm_6_x) and compile to DXIL. The container is stored in
+    // CompiledShader::words like SPIR-V; both are sequences of 32-bit words, told apart by their first word.
+    inline bool isD3DProfile(std::string_view profile)
+    {
+        return profile.starts_with("sm_6_");
+    }
+
+    // The first word of a module of `profile`: the SPIR-V magic number or the DXIL container's "DXBC" tag.
+    inline uint32_t bytecodeMagic(std::string_view profile)
+    {
+        return isD3DProfile(profile) ? 0x43425844u : 0x07230203u;
+    }
 
     struct ShaderDependency
     {
