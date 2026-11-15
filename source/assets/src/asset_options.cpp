@@ -15,9 +15,10 @@ namespace vultra
             .scan<'u', uint32_t>()
             .help("Maximum loading/import jobs (0: automatic; also limited by available memory)");
         cli.add_argument("--compression")
-            .default_value(std::string("bc7-linear"))
-            .choices("none", "bc7-linear")
-            .help("BC7 for linear data textures; color textures retain hardware sRGB sampling");
+            .default_value(std::string("uastc-linear"))
+            .choices("none", "uastc-linear")
+            .help("UASTC for linear data textures, transcoded to ASTC, BC7, ETC2 or RGBA8 on upload; color "
+                  "textures retain hardware sRGB sampling");
         cli.add_argument("--fbx-materials")
             .default_value(std::string("phong"))
             .choices("phong", "orca")
@@ -31,13 +32,14 @@ namespace vultra
     AssetImportOptions getAssetImportOptions(const argparse::ArgumentParser& cli)
     {
         AssetImportOptions options;
-        options.cacheDirectory       = cli.get<std::string>("--cache-dir");
-        options.cache                = !cli.get<bool>("--no-cache");
-        options.reimport             = cli.get<bool>("--reimport");
-        options.textures.mipmaps     = !cli.get<bool>("--no-mipmaps");
-        options.workers              = cli.get<uint32_t>("--import-jobs");
-        options.textures.compression = cli.get<std::string>("--compression") == "none" ? TextureCompression::eNone :
-                                                                                         TextureCompression::eBc7Linear;
+        options.cacheDirectory         = cli.get<std::string>("--cache-dir");
+        options.cache                  = !cli.get<bool>("--no-cache");
+        options.reimport               = cli.get<bool>("--reimport");
+        options.textures.mipmaps       = !cli.get<bool>("--no-mipmaps");
+        options.workers                = cli.get<uint32_t>("--import-jobs");
+        options.textures.compression   = cli.get<std::string>("--compression") == "none" ?
+                                             TextureCompression::eNone :
+                                             TextureCompression::eUastcLinear;
         options.fbx.materialConvention = cli.get<std::string>("--fbx-materials") == "orca" ?
                                              FbxMaterialConvention::eOrcaMetallicRoughness :
                                              FbxMaterialConvention::ePhong;

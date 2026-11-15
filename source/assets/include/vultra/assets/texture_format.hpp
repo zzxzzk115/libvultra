@@ -22,6 +22,8 @@ namespace vultra
         eBc4Unorm,
         eBc5Unorm,
         eBc6hUfloat,
-        eBc7Unorm
+        eBc7Unorm,
+        // Basis Universal UASTC, 4x4 blocks of 16 bytes; transcoded to a format the device samples on upload.
+        eUastc4x4
     };
 } // namespace vultra

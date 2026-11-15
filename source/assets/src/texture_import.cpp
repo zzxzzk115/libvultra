@@ -4,7 +4,8 @@
 #include <vultra/assets/texture_import.hpp>
 #include <vultra/core/base/logger.hpp>
 
-#include <bc7e_ispc.h>
+#include <basisu/encoder/basisu_enc.h>
+#include <basisu/encoder/basisu_uastc_enc.h>
 #include <xxhash.h>
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
 #include <stb_image_resize2.h>
@@ -21,50 +22,44 @@ namespace vultra
 {
     namespace
     {
-        void compressBc7(TextureData& texture)
+        void compressUastc(TextureData& texture)
         {
             static std::once_flag initialized;
             std::call_once(initialized,
                            []
                            {
-                               ispc::bc7e_compress_block_init();
+                               basisu::basisu_encoder_init();
                            });
-            ispc::bc7e_compress_block_params parameters;
-            ispc::bc7e_compress_block_params_init_fast(&parameters, false);
-            // Bounded batches feed SIMD lanes; vtask already distributes independent textures.
-            std::array<uint32_t, 64 * 16> pixels;
-            std::array<uint64_t, 64 * 2>  encoded;
+            std::array<uint8_t, 16 * 4> pixels;
             for (auto& level : texture.levels)
             {
                 const uint32_t         blocksX = (level.size.width + 3) / 4;
                 const uint32_t         blocksY = (level.size.height + 3) / 4;
-                const uint64_t         count   = uint64_t(blocksX) * blocksY;
-                std::vector<std::byte> output(size_t(count) * 16);
-                for (uint64_t first = 0; first < count; first += 64)
+                std::vector<std::byte> output(size_t(blocksX) * blocksY * sizeof(basist::uastc_block));
+                for (uint32_t by = 0; by < blocksY; ++by)
                 {
-                    const auto batch = uint32_t(std::min<uint64_t>(64, count - first));
-                    for (uint32_t block = 0; block < batch; ++block)
+                    for (uint32_t bx = 0; bx < blocksX; ++bx)
                     {
-                        const auto bx = uint32_t((first + block) % blocksX) * 4;
-                        const auto by = uint32_t((first + block) / blocksX) * 4;
+                        // Partial edge blocks repeat the image's edge texels.
                         for (uint32_t y = 0; y < 4; ++y)
                         {
-                            const auto sy = std::min(by + y, level.size.height - 1);
+                            const auto sy = std::min(by * 4 + y, level.size.height - 1);
                             for (uint32_t x = 0; x < 4; ++x)
                             {
-                                const auto sx = std::min(bx + x, level.size.width - 1);
-                                std::memcpy(&pixels[block * 16 + y * 4 + x],
+                                const auto sx = std::min(bx * 4 + x, level.size.width - 1);
+                                std::memcpy(&pixels[(y * 4 + x) * 4],
                                             level.bytes.data() + (size_t(sy) * level.size.width + sx) * 4,
                                             4);
                             }
                         }
+                        basist::uastc_block block;
+                        basisu::encode_uastc(pixels.data(), block, basisu::cPackUASTCLevelFaster);
+                        std::memcpy(output.data() + (size_t(by) * blocksX + bx) * sizeof(block), &block, sizeof(block));
                     }
-                    ispc::bc7e_compress_blocks(batch, encoded.data(), pixels.data(), &parameters);
-                    std::memcpy(output.data() + first * 16, encoded.data(), size_t(batch) * 16);
                 }
                 level.bytes = std::move(output);
             }
-            texture.format = TextureFormat::eBc7Unorm;
+            texture.format = TextureFormat::eUastc4x4;
         }
     } // namespace
 
@@ -117,9 +112,11 @@ namespace vultra
         }
         TextureData result {srgb ? TextureFormat::eRgba8Srgb : TextureFormat::eRgba8Unorm, std::move(levels)};
         const auto  mipsDone = std::chrono::steady_clock::now();
-        if (!srgb && options.compression == TextureCompression::eBc7Linear && image.width >= 4 && image.height >= 4)
+        // WebGPU creates a block-compressed texture only when its size is a multiple of the block size.
+        if (!srgb && options.compression == TextureCompression::eUastcLinear && image.width % 4 == 0 &&
+            image.height % 4 == 0)
         {
-            compressBc7(result);
+            compressUastc(result);
         }
         Logger::core().debug(
             "Texture {}x{} {}: mips {:.1f} ms, compression {:.1f} ms",
@@ -252,7 +249,7 @@ namespace vultra
         const uint64_t scratchPerJob = 16 * mib + largest * 2;
         Logger::core().info("Texture policy: mips {}, compression {}",
                             options.mipmaps ? "on" : "off",
-                            options.compression == TextureCompression::eNone ? "none" : "BC7 linear");
+                            options.compression == TextureCompression::eNone ? "none" : "UASTC linear");
         if (auto prepared = asset_detail::runImportJobs("Preparing textures",
                                                         uint32_t(jobs.size()),
                                                         workers,
@@ -277,7 +274,7 @@ namespace vultra
                                                                 texture->sourceMipNum =
                                                                     uint32_t(texture->levels.size());
                                                             }
-                                                            else if (texture->format != TextureFormat::eBc7Unorm)
+                                                            else if (texture->format != TextureFormat::eUastc4x4)
                                                             {
                                                                 texture->sourceMipNum = 1;
                                                             }

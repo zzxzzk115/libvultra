@@ -85,7 +85,7 @@ namespace vultra
                          {"source", name},
                          {"mipmaps", options.textures.mipmaps},
                          {"compression", int(options.textures.compression)},
-                         {"bc7_encoder", "bc7e-ispc-fast-v1"}};
+                         {"texture_encoder", "basisu-1.16.4-uastc-faster"}};
             auto extension = source.extension().string();
             std::ranges::transform(extension,
                                    extension.begin(),
@@ -285,7 +285,7 @@ namespace vultra
 
         void writeTextures(CacheWriter& writer, const PreparedTextures& textures)
         {
-            // Only generated mips and newly encoded BC7 blocks belong in the cache.
+            // Only generated mips and newly encoded UASTC blocks belong in the cache.
             size_t bytes = sizeof(uint64_t) + std::as_bytes(std::span(textures.materials)).size() + sizeof(uint32_t);
             for (const auto& texture : textures.images)
             {

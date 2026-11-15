@@ -10,14 +10,16 @@ namespace vultra
     enum class TextureCompression
     {
         eNone,
-        // VRI currently exposes BC7_UNORM. Color textures retain hardware sRGB filtering.
-        eBc7Linear
+        // Linear textures whose size is a multiple of 4 become UASTC, which the renderer transcodes to the first
+        // of ASTC 4x4, BC7, ETC2 and RGBA8 that the device samples. Color textures stay RGBA8 for hardware sRGB
+        // filtering: those formats are UNORM here.
+        eUastcLinear
     };
 
     struct TextureImportOptions
     {
         bool               mipmaps     = true;
-        TextureCompression compression = TextureCompression::eBc7Linear;
+        TextureCompression compression = TextureCompression::eUastcLinear;
     };
 
     // Static 2D DDS with its authored mips and color-space metadata. Arrays/cubes/volumes are rejected.

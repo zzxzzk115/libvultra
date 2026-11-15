@@ -39,6 +39,7 @@ namespace vultra::asset_detail
             case TextureFormat::eBc5Unorm:
             case TextureFormat::eBc6hUfloat:
             case TextureFormat::eBc7Unorm:
+            case TextureFormat::eUastc4x4:
                 return TextureLayout {4, 16};
             default:
                 return makeError("Unsupported asset texture format");

@@ -97,7 +97,7 @@ Follow [AGENTS.md](AGENTS.md), the checked-in formatting and static-analysis rul
 - [VRI-Framework](https://github.com/zzxzzk115/VRI-Framework): ORCA FBX material and normal-map conventions ([MIT notice](external/vrf_fbx_license.txt))
 - [DirectXTex](https://github.com/microsoft/DirectXTex): CPU DDS loading and block decompression
 - [TinyObjLoader](https://github.com/tinyobjloader/tinyobjloader): original OBJ/MTL loading
-- [bc7enc_rdo](https://github.com/richgel999/bc7enc_rdo): direct SIMD BC7 encoding
+- [Basis Universal](https://github.com/BinomialLLC/basis_universal): UASTC encoding at import and transcoding to ASTC, BC7, ETC2 or RGBA8 on upload
 - [xxHash](https://github.com/Cyan4973/xxHash): source and derived-data content hashes
 - [TinyGLTF](https://github.com/syoyo/tinygltf): glTF and GLB scene loading
 - [GLM](https://github.com/g-truc/glm): vector and matrix math
@@ -109,4 +109,4 @@ Follow [AGENTS.md](AGENTS.md), the checked-in formatting and static-analysis rul
 
 ## License
 
-libvultra is licensed under the [MIT License](LICENSE). Third-party code and assets retain their own licenses; see [OpenPBR](external/openpbr/README.vultra.md), [FileWatch](external/FileWatch/LICENSE), [BC7 encoder](external/bc7enc/README.md) and [asset attribution](resources/README.md).
+libvultra is licensed under the [MIT License](LICENSE). Third-party code and assets retain their own licenses; see [OpenPBR](external/openpbr/README.vultra.md), [FileWatch](external/FileWatch/LICENSE) and [asset attribution](resources/README.md).

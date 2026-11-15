@@ -51,9 +51,12 @@ if asset_import then
     add_requireconfs("openfbx.libdeflate", {system = false, configs = {shared = false}, override = true})
     add_requires("openfbx v0.9")
     add_requires("directxtex 2025.07", {configs = {dx11 = false, dx12 = false}})
-    add_requires("ispc 1.28.2", {host = true})
     add_requires("vtask v0.1.0")
     add_requires("meshoptimizer v0.24")
+end
+-- UASTC: the importer encodes it, the renderer transcodes it to a format the device samples.
+if asset_import or features.render then
+    add_requires("basisu 1.16.4")
 end
 
 if features.ui then
@@ -98,10 +101,6 @@ if desktop and features.platform then
         add_headerfiles("FileWatch/FileWatch.hpp")
         add_includedirs("FileWatch", {public = true})
     target_end()
-end
-
-if asset_import then
-    includes("bc7enc")
 end
 
 if features.render then

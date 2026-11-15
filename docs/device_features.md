@@ -36,7 +36,11 @@ from VRI's source only; **not exposed** means VRI has no way to request or use i
 | Bindless descriptors | `bindless` | Descriptor indexing when requested. | Tier 2 argument buffers when requested. | No. | Vulkan: reported here. Metal, WebGPU: source. |
 | Wave (subgroup) operations | `waveOperations` | Subgroup operations when supported. | Not reported (false). | No. | Vulkan: reported here, not run by a libvultra test. Metal, WebGPU: source. |
 | Anisotropic filtering | none | Enabled when supported; a sampler's request is clamped to the device limit. | Honoured by the sampler. | Honoured by the sampler. | Source. VRI does not report support or the limit, so `DeviceFeatures` cannot either. |
-| Block-compressed textures | `blockCompression` | BC1 to BC7, through `GetFormatSupport`. | Through `GetFormatSupport`. | Through `GetFormatSupport`. | Vulkan: run here (a BC7 texture and view in `test-device`). Metal, WebGPU: source. ASTC and ETC2 are not VRI formats. |
+| Block-compressed textures | `blockCompression` (BC1 to BC7) | BC1 to BC7, ETC2 RGBA8 and ASTC 4x4, as the driver reports them through `GetFormatSupport`. | Through `GetFormatSupport`; ETC2 and ASTC on Apple GPUs only. | Each family behind its optional feature (`texture-compression-bc`, `-etc2`, `-astc`), requested when the adapter has it. | Vulkan: run here through the UASTC upload in `test-asset-pipeline`, BC7 on the NVIDIA GPU and ASTC on the Intel GPU; BC7, ETC2 and RGBA8 on the Intel GPU with the target forced by a temporary change. Native WebGPU: BC7, and RGBA8 with BC7 skipped the same way. Metal and the browser: source. |
+
+UASTC textures from the importer are transcoded on upload to the first of ASTC 4x4, BC7, ETC2 RGBA8 and RGBA8
+that the device samples. Authored DDS textures keep their BC format; uploading one to a device that does not
+sample it is an error.
 
 The WebGL2 backend and VRI's D3D12 and OpenGL backends were not audited: libvultra does not build them for
 these techniques.

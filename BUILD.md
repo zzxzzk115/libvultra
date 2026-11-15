@@ -224,7 +224,9 @@ with the newest build tools installed in the SDK, and builds nothing itself; `--
 with [its manifest](examples/offline/android_manifest.xml).
 
 Web, with an [emsdk](https://github.com/emscripten-core/emsdk) checkout installed and activated (`emsdk install
-latest`, `emsdk activate latest`) and named by `--emsdk`; `webgl2` consumes the SPIR-V pack, `webgpu` the WGSL pack:
+latest`, `emsdk activate latest`) and named by `--emsdk`; `webgl2` consumes the SPIR-V pack, `webgpu` the WGSL pack.
+The shell also needs the emsdk environment (`emsdk_env`): packages built from source, such as basisu, look for
+`emcc` on the path rather than through `--emsdk`.
 
 ```sh
 XMAKE_CONFIGDIR="$OUT/web-config" xmake f -y -p wasm -a wasm32 -m release -o "$OUT/web" --emsdk="$EMSDK" \

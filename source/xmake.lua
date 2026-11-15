@@ -172,8 +172,7 @@ target("vultra")
         add_files("assets/src/dds_loader.cpp", "assets/src/image_decode.cpp", "assets/src/texture_import.cpp")
         add_files("assets/src/asset_options.cpp", "assets/src/asset_pipeline.cpp", "assets/src/fbx_loader.cpp",
                   "assets/src/gltf_loader.cpp", "assets/src/obj_loader.cpp")
-        add_deps("bc7enc")
-        add_packages("vtask", "meshoptimizer", "directxtex", "tinygltf", "tinyobjloader", "openfbx")
+        add_packages("vtask", "meshoptimizer", "directxtex", "tinygltf", "tinyobjloader", "openfbx", "basisu")
     end
 
     if features.render then
@@ -181,6 +180,7 @@ target("vultra")
         -- texture_upload.cpp shares the private texture_layout.hpp with the asset importers.
         add_includedirs("assets/src")
         add_deps("openpbr")
+        add_packages("basisu")
         if asset_import then
             add_defines("VULTRA_WITH_SCENE_PREPARATION", {public = true})
             add_files("render/src/scene_prepare.cpp")

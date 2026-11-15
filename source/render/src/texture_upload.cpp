@@ -2,9 +2,13 @@
 
 #include <vultra/render/texture_upload.hpp>
 
+#include <basisu/transcoder/basisu_transcoder.h>
+
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cstring>
+#include <mutex>
 #include <numeric>
 #include <set>
 #include <span>
@@ -71,7 +75,94 @@ namespace vultra
             std::vector<TextureSubresourceView> subresources;
         };
 
-        std::expected<std::unique_ptr<Texture>, Error> uploadTexture(Device& device, const TextureUploadView& data)
+        bool samples(const Device& device, VriFormat format)
+        {
+            return (device.core.GetFormatSupport(device.handle, format) & VriFormatSupport_Texture) != 0;
+        }
+
+        // UASTC goes to the first format the device samples, best preserved first: ASTC 4x4 holds UASTC
+        // losslessly and BC7 nearly so, ETC2 loses more, and RGBA8 is sampled everywhere.
+        VriFormat uastcTarget(const Device& device)
+        {
+            for (const auto format : {VriFormat_ASTC_4x4_UNORM, VriFormat_BC7_UNORM, VriFormat_ETC2_RGBA8_UNORM})
+            {
+                if (samples(device, format))
+                {
+                    return format;
+                }
+            }
+            return VriFormat_RGBA8_UNORM;
+        }
+
+        std::expected<std::vector<std::byte>, Error> transcodeUastc(const TextureSubresourceView& resource,
+                                                                    VriFormat                     target)
+        {
+            static std::once_flag initialized;
+            std::call_once(initialized,
+                           []
+                           {
+                               basist::basisu_transcoder_init();
+                           });
+            const uint32_t blocksX = (resource.size.width + 3) / 4;
+            const uint32_t blocksY = (resource.size.height + 3) / 4;
+            const uint64_t count   = uint64_t(blocksX) * blocksY * resource.depth;
+            if (resource.bytes.size() != count * sizeof(basist::uastc_block))
+            {
+                return makeError("Transcode UASTC: subresource has {} bytes, expected {}",
+                                 resource.bytes.size(),
+                                 count * sizeof(basist::uastc_block));
+            }
+            const bool             unpack = target == VriFormat_RGBA8_UNORM;
+            std::vector<std::byte> output(unpack ?
+                                              size_t(resource.size.width) * resource.size.height * resource.depth * 4 :
+                                              resource.bytes.size());
+            for (uint64_t i = 0; i < count; ++i)
+            {
+                basist::uastc_block block;
+                std::memcpy(&block, resource.bytes.data() + i * sizeof(block), sizeof(block));
+                bool transcoded = false;
+                switch (target)
+                {
+                    case VriFormat_ASTC_4x4_UNORM:
+                        transcoded = basist::transcode_uastc_to_astc(block, output.data() + i * sizeof(block));
+                        break;
+                    case VriFormat_BC7_UNORM:
+                        transcoded = basist::transcode_uastc_to_bc7(block, output.data() + i * sizeof(block));
+                        break;
+                    case VriFormat_ETC2_RGBA8_UNORM:
+                        transcoded = basist::transcode_uastc_to_etc2_rgba(block, output.data() + i * sizeof(block));
+                        break;
+                    default: {
+                        std::array<basist::color32, 16> texels;
+                        transcoded = basist::unpack_uastc(block, texels.data(), false);
+                        // Copy the part of the block inside the image; partial blocks pad the edge.
+                        const uint32_t slice = uint32_t(i / (uint64_t(blocksX) * blocksY));
+                        const uint32_t bx    = uint32_t(i % blocksX) * 4;
+                        const uint32_t by    = uint32_t(i / blocksX % blocksY) * 4;
+                        for (uint32_t y = 0; y < 4 && by + y < resource.size.height; ++y)
+                        {
+                            for (uint32_t x = 0; x < 4 && bx + x < resource.size.width; ++x)
+                            {
+                                const size_t texel =
+                                    (size_t(slice) * resource.size.height + by + y) * resource.size.width + bx + x;
+                                std::memcpy(output.data() + texel * 4, &texels[y * 4 + x], 4);
+                            }
+                        }
+                        break;
+                    }
+                }
+                if (!transcoded)
+                {
+                    return makeError("Transcode UASTC block {}", i);
+                }
+            }
+            return output;
+        }
+
+        std::expected<std::unique_ptr<Texture>, Error> uploadTexture(Device&                            device,
+                                                                     const TextureUploadView&           data,
+                                                                     VriFormat                          format,
+                                                                     const asset_detail::TextureLayout& layout)
         {
             if (data.subresources.empty() || data.layers == 0 || data.mips == 0 || data.mips > 32)
             {
@@ -82,12 +173,7 @@ namespace vultra
             {
                 return makeError("Texture asset must start with mip zero, layer zero");
             }
-            const auto format = gpuFormat(data.format);
-            if (!format)
-            {
-                return std::unexpected(format.error());
-            }
-            auto desc = colorTexture(first.size, *format);
+            auto desc = colorTexture(first.size, format);
             switch (data.dimension)
             {
                 case TextureDimension::e2D:
@@ -127,12 +213,6 @@ namespace vultra
             desc.layerNum = data.layers;
             desc.mipNum   = data.mips;
             desc.usage    = VriTextureUsage_ShaderResource | VriTextureUsage_TransferDst | VriTextureUsage_TransferSrc;
-            const auto layoutResult = asset_detail::textureLayout(data.format);
-            if (!layoutResult)
-            {
-                return std::unexpected(layoutResult.error());
-            }
-            const auto layout = *layoutResult;
             const auto rowAlignment =
                 std::lcm(layout.bytes,
                          std::max(1u, device.core.GetDeviceDesc(device.handle)->uploadBufferTextureRowAlignment));
@@ -239,6 +319,48 @@ namespace vultra
                 return std::unexpected(submitted.error());
             }
             return texture;
+        }
+
+        std::expected<std::unique_ptr<Texture>, Error> uploadTexture(Device& device, const TextureUploadView& data)
+        {
+            if (data.format == TextureFormat::eUastc4x4)
+            {
+                const VriFormat target = uastcTarget(device);
+                // The transcoded bytes outlive the upload view that refers to them.
+                std::vector<std::vector<std::byte>> transcoded;
+                transcoded.reserve(data.subresources.size());
+                TextureUploadView view = data;
+                for (auto& resource : view.subresources)
+                {
+                    auto bytes = transcodeUastc(resource, target);
+                    if (!bytes)
+                    {
+                        return std::unexpected(bytes.error());
+                    }
+                    resource.bytes = transcoded.emplace_back(std::move(*bytes));
+                }
+                // The transcoded blocks keep UASTC's 4x4 blocks of 16 bytes; RGBA8 has 4-byte texels.
+                const asset_detail::TextureLayout layout = target == VriFormat_RGBA8_UNORM ?
+                                                               asset_detail::TextureLayout {1, 4} :
+                                                               asset_detail::TextureLayout {4, 16};
+                return uploadTexture(device, view, target, layout);
+            }
+            const auto format = gpuFormat(data.format);
+            if (!format)
+            {
+                return std::unexpected(format.error());
+            }
+            // Authored block-compressed textures (DDS) are uploaded as they are; not every device samples them.
+            if (!samples(device, *format))
+            {
+                return makeError("This device does not sample texture asset format {}", uint32_t(data.format));
+            }
+            const auto layout = asset_detail::textureLayout(data.format);
+            if (!layout)
+            {
+                return std::unexpected(layout.error());
+            }
+            return uploadTexture(device, data, *format, *layout);
         }
     } // namespace
 

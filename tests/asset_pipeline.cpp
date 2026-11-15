@@ -5,6 +5,7 @@
 #include <vultra/gpu/image_readback.hpp>
 #include <vultra/render/scene.hpp>
 #include <vultra/render/texture_blit.hpp>
+#include <vultra/render/texture_upload.hpp>
 
 #include <chrono>
 #include <cmath>
@@ -116,18 +117,37 @@ namespace
         auto       output = must(vultra::Texture::create(*device, vultra::colorTexture({16, 16})));
         const auto blit   = must(vultra::TextureBlit::create(*device, output.desc.format));
         const auto frame  = must(vultra::Frame::create(*device));
-        for (const uint32_t slot : {0u, 2u})
+        // A linear 8x8 image becomes UASTC and is transcoded to the format this device samples.
+        vultra::SceneImage uastcImage {8, 8, std::vector<uint8_t>(8 * 8 * 4)};
+        for (size_t i = 0; i < uastcImage.pixels.size(); i += 4)
         {
-            must(blit->setSource(0, *scene->materialTextures.at(0)[slot]));
+            uastcImage.pixels[i]     = 51;
+            uastcImage.pixels[i + 1] = 102;
+            uastcImage.pixels[i + 2] = 204;
+            uastcImage.pixels[i + 3] = 255;
+        }
+        const auto uastc = must(vultra::prepareTexture(uastcImage, false));
+        require(uastc.format == vultra::TextureFormat::eUastc4x4 && uastc.levels.size() == 4,
+                "A linear texture with a size in whole blocks was not encoded as UASTC");
+        const auto transcoded = must(vultra::uploadTextureAsset(*device, uastc));
+        for (vultra::Texture* source :
+             {scene->materialTextures.at(0)[0], scene->materialTextures.at(0)[2], transcoded.get()})
+        {
+            const bool srgb = source == scene->materialTextures.at(0)[0];
+            must(blit->setSource(0, *source));
             auto* cmd = must(frame->begin());
-            must(blit->draw(cmd, output, {0, 0, 16, 16}, 0, slot == 0));
+            must(blit->draw(cmd, output, {0, 0, 16, 16}, 0, srgb));
             must(frame->submitAndWait());
             const auto  image = must(vultra::readback(*device, output));
             const float reference[] {0.2f, 0.4f, 0.8f, 1};
+            const char* failure = "Cached texture GPU upload/filtering/color space differs from source";
+            if (source == transcoded.get())
+            {
+                failure = "Transcoded UASTC texture differs from source";
+            }
             for (size_t i = 0; i < image.rgba.size(); ++i)
             {
-                require(std::abs(image.rgba[i] - reference[i % 4]) < 0.035f,
-                        "Cached texture GPU upload/filtering/color space differs from source");
+                require(std::abs(image.rgba[i] - reference[i % 4]) < 0.035f, failure);
             }
         }
     }
@@ -409,8 +429,9 @@ int main()
     require(slots[0] != slots[2], "Color and linear uses of one image share an incorrect texture");
     require(cold.textures.images.at(slots[0]).format == vultra::TextureFormat::eRgba8Srgb,
             "Color texture lost sRGB filtering");
-    require(cold.textures.images.at(slots[2]).format == vultra::TextureFormat::eBc7Unorm,
-            "Linear texture was not compressed");
+    // WebGPU creates block-compressed textures only in whole blocks, so a 7x5 image stays uncompressed.
+    require(cold.textures.images.at(slots[2]).format == vultra::TextureFormat::eRgba8Unorm,
+            "A linear texture whose size is not a multiple of 4 was compressed");
     require(cold.textures.images.at(slots[2]).levels.size() == 3, "Odd-sized mip chain is incomplete");
     const auto warm = must(vultra::importAsset(source, options));
     require(warm.cacheHit, "Unchanged asset did not hit its cache");
@@ -485,6 +506,6 @@ int main()
             "Failed import replaced a valid cache or fabricated success");
     vultra::Logger::app().info("Asset pipeline tests passed: external dependencies, content invalidation, options, "
                                "corruption recovery, source preservation, parallel determinism/failure recovery, "
-                               "linear-light mips, BC7 and GPU sampling");
+                               "linear-light mips, UASTC and GPU sampling");
     return 0;
 }
