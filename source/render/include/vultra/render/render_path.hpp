@@ -25,10 +25,12 @@ namespace vultra
     inline constexpr std::string_view kSceneHdr   = "scene.hdr";   // RGBA16_SFLOAT, scene-linear, unexposed.
     inline constexpr std::string_view kSceneDepth = "scene.depth"; // D32_SFLOAT, 0 near to 1 far.
     // The surface layers of the visible pixels. Paths provide them on request (StageBuild::requested).
-    inline constexpr std::string_view kSceneNormal   = "scene.normal";   // RGBA16_SFLOAT, unit world normal in xyz.
-    inline constexpr std::string_view kSceneAlbedo   = "scene.albedo";   // RGBA8_SRGB, linear base color.
-    inline constexpr std::string_view kSceneMaterial = "scene.material"; // RGBA8_UNORM: occlusion, roughness, metal.
-    inline constexpr std::string_view kSceneEmission = "scene.emission"; // RGBA16_SFLOAT, emitted radiance.
+    // Shaders encode and decode them with `import vultra.gbuffer;`; with scene.hdr they fit WebGPU's default 32
+    // bytes of color attachments per sample.
+    inline constexpr std::string_view kSceneNormal   = "scene.normal";   // RG16_SFLOAT, octahedral unit world normal.
+    inline constexpr std::string_view kSceneAlbedo   = "scene.albedo";   // RGBA8_SRGB, base color, occlusion in a.
+    inline constexpr std::string_view kSceneMaterial = "scene.material"; // RG8_UNORM: roughness, metalness.
+    inline constexpr std::string_view kSceneEmission = "scene.emission"; // R32_UINT, emitted radiance as RGB9E5.
     // RG16_SFLOAT: from a pixel to where its surface was in the previous frame, in UV units (x right, y down),
     // with camera and object motion and without jitter.
     inline constexpr std::string_view kSceneMotion = "scene.motion";

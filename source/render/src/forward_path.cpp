@@ -59,12 +59,13 @@ namespace vultra
             std::string_view semantic;
         };
 
-        constexpr std::array<Target, 6> kTargets {{{kSceneHdr, VriFormat_RGBA16_SFLOAT, "color.linear.hdr"},
-                                                   {kSceneNormal, VriFormat_RGBA16_SFLOAT, "normal.world"},
-                                                   {kSceneAlbedo, VriFormat_RGBA8_SRGB, "color.albedo"},
-                                                   {kSceneMaterial, VriFormat_RGBA8_UNORM, "material.orm"},
-                                                   {kSceneEmission, VriFormat_RGBA16_SFLOAT, "color.emission"},
-                                                   {kSceneMotion, VriFormat_RG16_SFLOAT, "motion.screen"}}};
+        constexpr std::array<Target, 6> kTargets {
+            {{kSceneHdr, VriFormat_RGBA16_SFLOAT, "color.linear.hdr"},
+             {kSceneNormal, VriFormat_RG16_SFLOAT, "normal.world"},
+             {kSceneAlbedo, VriFormat_RGBA8_SRGB, "color.albedo"},
+             {kSceneMaterial, VriFormat_RG8_UNORM, "material.roughness_metalness"},
+             {kSceneEmission, VriFormat_R32_UINT, "color.emission"},
+             {kSceneMotion, VriFormat_RG16_SFLOAT, "motion.screen"}}};
 
         std::expected<VriPipeline*, Error> createPipeline(Device&                        device,
                                                           VriPipelineLayout*             layout,

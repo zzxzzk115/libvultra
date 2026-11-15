@@ -162,6 +162,8 @@ namespace vultra
                         return VriFormat_R16_SFLOAT;
                     case SLANG_IMAGE_FORMAT_rgba8:
                         return VriFormat_RGBA8_UNORM;
+                    case SLANG_IMAGE_FORMAT_rg8:
+                        return VriFormat_RG8_UNORM;
                     case SLANG_IMAGE_FORMAT_r32ui:
                         return VriFormat_R32_UINT;
                     default:

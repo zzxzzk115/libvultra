@@ -30,10 +30,10 @@ float4 skyColor(ScreenVertex input)
 struct GBufferOutput
 {
     float4 hdr : SV_Target0;
-    float4 normal : SV_Target1;
+    float2 normal : SV_Target1;
     float4 albedo : SV_Target2;
-    float4 material : SV_Target3;
-    float4 emission : SV_Target4;
+    float2 material : SV_Target3;
+    uint   emission : SV_Target4;
     float2 motion : SV_Target5;
 };
 

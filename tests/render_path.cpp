@@ -470,11 +470,10 @@ namespace
             const auto& previous = viewProjections[index == 0 ? 0 : index - 1];
             for (const glm::vec2 pixel : {glm::vec2(32, 32), glm::vec2(20, 40), glm::vec2(44, 24)})
             {
-                const size_t    texel = (size_t(pixel.y) * kSize + size_t(pixel.x)) * 4;
-                const glm::vec3 normal {layered[index].normal.rgba[texel],
-                                        layered[index].normal.rgba[texel + 1],
-                                        layered[index].normal.rgba[texel + 2]};
-                require(glm::all(glm::epsilonEqual(normal, glm::vec3(0, 0, 1), 1e-3f)), "scene.normal is not +Z");
+                const size_t texel = (size_t(pixel.y) * kSize + size_t(pixel.x)) * 4;
+                // +Z is the centre of the octahedral encoding.
+                const glm::vec2 normal {layered[index].normal.rgba[texel], layered[index].normal.rgba[texel + 1]};
+                require(glm::all(glm::epsilonEqual(normal, glm::vec2(0, 0), 1e-3f)), "scene.normal is not +Z");
                 const glm::vec2 motion {layered[index].motion.rgba[texel], layered[index].motion.rgba[texel + 1]};
                 const auto      expected = expectedMotion(viewProjections[index], previous, offsets[index], pixel);
                 largest                  = std::max(largest, glm::length(expected));

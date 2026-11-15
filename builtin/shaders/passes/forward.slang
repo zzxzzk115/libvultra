@@ -1,3 +1,4 @@
+import vultra.gbuffer;
 import vultra.material;
 
 #include "resources/frame_block.slangh"
@@ -44,10 +45,10 @@ struct GBufferVertex
 struct GBufferOutput
 {
     float4 hdr : SV_Target0;
-    float4 normal : SV_Target1;
+    float2 normal : SV_Target1;
     float4 albedo : SV_Target2;
-    float4 material : SV_Target3;
-    float4 emission : SV_Target4;
+    float2 material : SV_Target3;
+    uint   emission : SV_Target4;
     float2 motion : SV_Target5;
 };
 
@@ -67,10 +68,10 @@ struct GBufferOutput
     VultraSurface surface   = forwardSurface(input.surface, frontFace, baseColor);
     GBufferOutput output;
     output.hdr      = float4(shadeSurface(surface), 1);
-    output.normal   = float4(surface.normal, 0);
-    output.albedo   = float4(surface.baseColor, 1);
-    output.material = float4(surface.occlusion, surface.roughness, surface.metallic, 0);
-    output.emission = float4(surface.emission, 0);
+    output.normal   = vultraEncodeNormal(surface.normal);
+    output.albedo   = float4(surface.baseColor, surface.occlusion);
+    output.material = float2(surface.roughness, surface.metallic);
+    output.emission = vultraEncodeEmission(surface.emission);
     float2 ndc      = input.clip.xy / input.clip.w;
     output.motion   = (input.previousClip.xy / input.previousClip.w - ndc) * float2(0.5, -0.5);
     return output;
