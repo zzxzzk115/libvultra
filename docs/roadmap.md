@@ -10,7 +10,7 @@ All serialized-data and file-format versions remain **1** before a release, with
 
 | Area | What is missing | Acceptance |
 | --- | --- | --- |
-| Scene resources | Render paths provide only `scene.hdr` and `scene.depth`. Normals, albedo, motion vectors, camera jitter and previous-frame matrices have no standard names yet. | Named, documented resources with format and convention, provided by `ForwardPath` and checked by `validateSceneResources()`. |
+| Scene resources | Render paths provide only `scene.hdr` and `scene.depth`. Normals, albedo, motion vectors, camera jitter and previous-frame matrices have no standard names yet. | Named, documented resources with format and convention, provided by a stage and checked by `validateRenderPath()`. |
 | Async compute | One compute queue; the per-pass profiler covers single-batch plans only. | Profiling across batches; a regression with several compute batches in one frame. |
 | Scene lights | `LightBuffer` holds at most 64 lights, and no test reads it from a graph pass. | A capacity decided by the first path that needs more, and a regression with a compute pass reading `scene.lights`. |
 | Shader optimization | `ShaderCompileOptions::optimize` exists; the builtin shader pack is cooked without it. Cooking the pack optimized was measured on 2026-11-11 (forward path, one glTF model, 3840x2160, RTX 4090 Laptop, Vulkan): GPU frame time 0.717 ms against 0.702 ms, within run-to-run noise, with a 19% larger pack and eight HDR values one half-float step apart. | A scene or device on which optimization measurably lowers frame time; heavier shaders such as path tracing and meshlets were not measured. |
@@ -20,7 +20,7 @@ All serialized-data and file-format versions remain **1** before a release, with
 
 ## Rules for new work
 
-- A render technique is a `RenderPath` or a graph pass, not a change to `ForwardPath`.
+- A render technique is a stage, a path of stages or a graph pass, not a change to `vultra.forward`.
 - A new capability goes into the module that owns its responsibility. `xmake lua tests/build_modules.lua` must keep
   passing: a module may only use the modules it lists as dependencies.
 - Rendering changes need finite-frame runs, validation-layer checks and image readback. Compilation or a

@@ -18,13 +18,6 @@ namespace vultra
 {
     namespace
     {
-        struct PrimitiveTransform
-        {
-            glm::mat4 model;
-            glm::mat4 normal;
-            glm::vec4 properties; // Tangent handedness, conservative sphere scale.
-        };
-
         static_assert(sizeof(PrimitiveTransform) == 144 && offsetof(PrimitiveTransform, properties) == 128);
 
         // Per-primitive queries take indices from the scene's own primitive table; any other index is a bug.
@@ -299,10 +292,10 @@ namespace vultra
         }
         result->vertices = std::make_unique<Buffer>(std::move(*vertices));
         auto indices     = uploadBuffer(device,
-                                        std::as_bytes(indexData),
-                                        VriBufferUsage_IndexBuffer | VriBufferUsage_StorageBuffer | accelerationUsage,
+                                    std::as_bytes(indexData),
+                                    VriBufferUsage_IndexBuffer | VriBufferUsage_StorageBuffer | accelerationUsage,
                                         {VriAccess_IndexBufferRead, VriPipelineStage_VertexInput},
-                                        sizeof(uint32_t));
+                                    sizeof(uint32_t));
         if (!indices)
         {
             return std::unexpected(indices.error());

@@ -28,7 +28,12 @@ namespace vultra
         eStorageReadWrite,
         eCopySource,
         eCopyDestination,
-        ePresent
+        ePresent,
+        // Buffers a draw reads as vertex attributes or indices.
+        eVertexBuffer,
+        eIndexBuffer,
+        // A constant buffer a shader reads.
+        eConstantBuffer
     };
 
     const char* usageName(Usage usage);

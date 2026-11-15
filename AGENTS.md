@@ -19,7 +19,7 @@ An explicit user request may change a corresponding constraint. An agent must no
 - VRI is the rendering abstraction boundary. Use its descriptors and commands directly; do not add another general RHI, resource object hierarchy or backend dispatch layer above it. Keep native interop within the existing platform or XR boundaries.
 - Keep one public `vultra` static library. Basic drawing examples must remain able to use VRI and RenderGraph directly, without importing assets or using a render path.
 - Keep the explicit, code-driven RenderGraph with its single executor and execution plan. Do not add an external fg library, a second graph executor or a global plugin registry.
-- A rendering technique is a `RenderPath` implementation or a graph pass. Keep `ForwardPath` a small reference path; shadows, deferred or clustered shading are separate paths written against the public interfaces.
+- A rendering technique is a `RenderStage`, a render path made of stages, or a graph pass. `RenderPath` composes and validates the stages a caller passes in; the kernel keeps no registry of them. Keep `vultra.forward` (`vultra.mesh` and `vultra.forward_shading`) a small reference path; shadows, deferred or clustered shading are other stages and paths written against the public interfaces, and the standard ones live in the official packages, not here.
 - Follow the BaseApp / DesktopApp / ImGuiApp lifecycle. Keep logic updates, UI construction, command recording, submission and presentation in their respective phases. Do not construct UI in `onUpdate()`.
 
 ## 3. C++ and Ownership

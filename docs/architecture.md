@@ -35,7 +35,7 @@ flowchart BT
 | `assets` | Scene, material and texture values, asset sources, VPK archives; optional importers. | core, platform |
 | `shader` | Slang programs: compile, reflect, cook, load, hot reload; the builtin shader pack. | gpu, assets |
 | `graph` | `RenderGraph`, `PassCatalog`, version-1 `.vgraph` definitions. | gpu |
-| `render` | `GpuScene`, the `RenderPath` interface, `ForwardPath`, environment, tone mapping, blits. | graph, shader, assets |
+| `render` | `GpuScene`, render stages and `RenderPath`, the stages and path of `vultra.forward`, environment, tone mapping, blits. | graph, shader, assets |
 | `ui` | `EditorGui`: Dear ImGui with window, offscreen and inspector support. | gpu, platform |
 | `app` | `BaseApp`, `RenderApp`, `DesktopApp`, `ImGuiApp`, Android and Web apps, camera controllers. | gpu, platform |
 | `xr` | OpenXR session, eye swapchains, controller poses and input. | gpu |
@@ -87,6 +87,8 @@ and reports diagnostics. Two compile options are chosen per compile, not by the 
 cache key: `debugInfo` embeds source text and line information for GPU debuggers, and `optimize` runs the
 SPIRV-Tools performance passes over the generated SPIR-V. The static Slang build carries no optimizer of its
 own, so the compiler links SPIRV-Tools directly. The builtin shader pack is cooked with neither: optimizing it gave no measurable frame-time gain ([roadmap](roadmap.md)).
+`ShaderCompileOptions::entries` may name an entry point that a module in `linkSources` or `linkModules` defines
+instead of the file; hosts use this to add a vertex shader of their own to a file that has only fragment stages.
 
 User attributes are how a host attaches meaning to shader declarations, for example to describe a render pass
 inside its shader:
@@ -136,24 +138,36 @@ instances and connections and builds through the same executor as C++ `addPass()
 ## Rendering
 
 `GpuScene` uploads `SceneData` geometry, materials and textures. A **render path** turns a scene into named
-graph resources through the `RenderPath` interface:
+graph resources. It is an ordered list of **slots**, each filled by a **stage**:
 
-- `provides()` declares the resources, always including `scene.hdr` (RGBA16F, scene-linear) and `scene.depth`
-  (D32). Path-specific resources use the path's own namespace, such as `clustered.light_grid`.
-- `addPasses()` appends the path's passes to a graph and returns those resources.
-- `prepare()` updates per-frame data from the camera and lights.
+- `StageDesc` describes a stage without a device: its name, the slots it can fill (a stage with several fills
+  them together), its scope, the resources it needs (required or optional) and the resources it provides.
+  A **frame** stage runs once per graph before every view; a **view** stage runs once per view.
+- `RenderStage` is the stage itself: `addPasses()` appends its passes for one view (or the frame) and returns
+  exactly the resources it declares; `prepare()` updates per-frame data from the cameras and lights.
+- `RenderPath` is a concrete class created from a `RenderPathDesc` (name and slots) and a list of `StageType`
+  (description and factory). There is no global registry: the caller passes the stages it knows.
+  `addPasses()` takes a list of views and returns each view's resources; with several views, view resources
+  are named `<view>:<resource>` in the graph and frame resources exist once.
+- `validateRenderPath()` checks a path from the descriptions alone: every required resource is provided by an
+  earlier stage, no resource is provided twice, a frame stage reads no view resource, and the stages together
+  provide `scene.hdr` (RGBA16F, scene-linear) and `scene.depth` (D32). Hosts call it offline; `create()` calls it
+  as well. Stage-specific resources use the stage's own namespace, such as `clustered.light_grid`.
 
 Later passes depend only on resource names, so they work with any path that provides them.
-`validateSceneResources()` checks a path against what it declares.
 
-Lights reach every path the same way: `LightBuffer` validates a frame's `RenderLight` values and uploads them as
-one storage buffer of `GpuLight` records (`LightData` in `resources/scene_lights.slangh`). A path binds its view
-directly, as `ForwardPath` does, or imports the buffer into its graph as `scene.lights` for passes that build
-their own light structures. It holds at most 64 lights.
+Every path provides two resources itself, before its first stage (`pathInputs()`): `scene.lights` once per frame and
+`camera.data` for each view. The path owns a `LightBuffer`, which validates a frame's `RenderLight` values and
+uploads them as one storage buffer of at most 64 `GpuLight` records (`LightData` in
+`resources/scene_lights.slangh`); `StageFrame::lightBuffer` gives stages its CPU side, as `vultra.forward_shading`
+uses it. `camera.data` is a constant buffer of `CameraData` per view: matrices and their inverses, the previous
+frame's view projection, position, image size and clip planes, written by `prepare()`.
 
-`ForwardPath` (`vultra.forward`) is the reference path: a skybox and one opaque OpenPBR forward pass with
-analytic lights and image-based lighting. It has no shadows, transparency or mesh shading. Deferred, clustered or
-shadowed rendering are separate `RenderPath` implementations, written against the same public interfaces.
+`vultra.forward` is the reference path, made of two stages: `vultra.mesh` (slot `geometry`, frame) imports the
+scene's vertex, index and primitive transform buffers as `scene.vertices`, `scene.indices` and
+`scene.instances`; `vultra.forward_shading` (slot `shading`, view) draws a skybox and one opaque OpenPBR forward
+pass with analytic lights and image-based lighting. It has no shadows, transparency or mesh shading. Deferred,
+clustered or shadowed rendering are other stages and paths, written against the same public interfaces.
 `ToneMappingPass`, `Environment` and `TextureBlit` are independent of the path.
 
 ## Assets

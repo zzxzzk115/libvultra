@@ -14,7 +14,7 @@ Everything is one static library, `vultra`. Programs select the modules they nee
 | `assets` | Scene, material and texture values, VPK archives, glTF/GLB, OBJ and FBX importers. |
 | `shader` | Slang programs: compile, reflect (including user attributes), cook, load, hot reload. |
 | `graph` | A code-driven `RenderGraph` with async compute and Graphviz export, and `.vgraph` definitions. |
-| `render` | `GpuScene`, the `RenderPath` interface and the reference `ForwardPath` (`vultra.forward`). |
+| `render` | `GpuScene`, render stages, `RenderPath` and the reference path `vultra.forward`. |
 | `ui` | `EditorGui`: Dear ImGui for a window or an offscreen target. |
 | `app` | `DesktopApp`, `ImGuiApp`, Android and Web application loops, camera controllers. |
 | `xr` | OpenXR session, eye swapchains, controller poses and input. |
@@ -61,9 +61,9 @@ Examples accept `--frames`, `--log-level` and `--log-file`; windowed ones also a
   and Web (WebGL2/WebGPU) code paths exist but were not rebuilt after the module restructuring. XR ran on the
   Meta XR Simulator only, not on a headset ([BUILD.md](BUILD.md#desktop-hidpi-and-xr)).
 - SDL3 is the only desktop window backend.
-- `ForwardPath` renders static geometry with an opaque OpenPBR material subset, analytic lights and image-based
-  lighting. It has no shadows, transparency or mesh shading; other techniques are separate `RenderPath`
-  implementations.
+- `vultra.forward` renders static geometry with an opaque OpenPBR material subset, analytic lights and
+  image-based lighting. It has no shadows, transparency or mesh shading; other techniques are other stages and
+  paths.
 - Render graph textures are 2D, 2D arrays, cubes or 3D with mip chains; a pass uses a whole texture or one mip
   and/or layer of it. Depth textures are D32.
 - All serialized-data and file-format versions are `1` and may change incompatibly before a release.

@@ -10,7 +10,7 @@ its message and exits with status 1. Install the prerequisites in
 | --- | --- | --- |
 | [Window](#window) | `app` | Nothing: `DesktopApp` owns the window, device, frame and presentation. |
 | [Offline RenderGraph](#offline-rendergraph) | `graph` | The device, the graph and the completed GPU submission. |
-| [Scene with ForwardPath](#scene-with-forwardpath) | `render` | Also the imported scene, environment and render path. |
+| [Scene with vultra.forward](#scene-with-vultraforward) | `render` | Also the imported scene, environment and render path. |
 
 ## Create a project
 
@@ -210,10 +210,10 @@ producing pass alive; unobserved passes are culled. `Frame::submitAndWait()` is 
 `graph.writeDot(stream)` writes the compiled plan for Graphviz. A graph with `PassQueue::eAsyncCompute` passes is
 executed with `graph.execute(frame)` after `frame.begin()` instead, which submits every batch but the final graphics one.
 
-## Scene with ForwardPath
+## Scene with vultra.forward
 
 A render path turns a scene into named graph resources. This imports a model, renders it with the reference
-`ForwardPath` and writes the scene-linear `scene.hdr` result:
+path `vultra.forward` and writes the scene-linear `scene.hdr` result:
 
 ```cpp
 #include <vultra/assets/asset_pipeline.hpp>
@@ -249,20 +249,22 @@ std::expected<void, vultra::Error> run()
     {
         return std::unexpected(environment.error());
     }
-    auto path = vultra::ForwardPath::create(**device);
+    auto path = vultra::createForwardPath(**device);
     if (!path)
     {
         return std::unexpected(path.error());
     }
     vultra::RenderGraph graph(**device);
 
-    constexpr vultra::Extent size {640, 360};
-    const auto               resources = (*path)->addPasses(graph, **scene, **environment, size);
-    if (!resources)
+    // One view; a path takes a list, so a stereo renderer passes two.
+    constexpr vultra::Extent   size {640, 360};
+    const vultra::RenderView   view {"main", size};
+    const auto                 views = (*path)->addPasses(graph, **scene, **environment, std::span(&view, 1));
+    if (!views)
     {
-        return std::unexpected(resources.error());
+        return std::unexpected(views.error());
     }
-    const auto hdr = vultra::findSceneResource(*resources, vultra::kSceneHdr);
+    const auto hdr = vultra::findSceneResource(views->front(), vultra::kSceneHdr);
     if (!hdr)
     {
         return std::unexpected(hdr.error());
@@ -287,7 +289,7 @@ std::expected<void, vultra::Error> run()
     const vultra::RenderLight sun {.kind             = vultra::RenderLightKind::eDirectional,
                                    .directionToLight = {-0.5f, 0.8f, 0.4f},
                                    .intensity        = 3};
-    if (auto prepared = (*path)->prepare(graph, camera, std::span(&sun, 1)); !prepared)
+    if (auto prepared = (*path)->prepare(graph, std::span(&camera, 1), std::span(&sun, 1)); !prepared)
     {
         return prepared;
     }
@@ -329,7 +331,7 @@ int main()
 }
 ```
 
-`ForwardPath` and `Environment` compile the library shaders from `builtin/shaders` relative to the working
+The forward shading stage and `Environment` compile the library shaders from `builtin/shaders` relative to the working
 directory, and the model path is relative to the libvultra checkout. For this program set
 `set_rundir("$(projectdir)/external/libvultra")` in `xmake.lua`; the output path is then relative to it as well.
 

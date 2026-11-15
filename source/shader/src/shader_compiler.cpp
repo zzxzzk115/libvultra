@@ -284,8 +284,8 @@ namespace vultra
         }
         const auto source   = absoluteSource->lexically_normal();
         auto       diagnose = [&](SlangResult                 result,
-                                  const ComPtr<slang::IBlob>& blob,
-                                  const char*                 operation) -> std::expected<void, Error>
+                            const ComPtr<slang::IBlob>& blob,
+                            const char*                 operation) -> std::expected<void, Error>
         {
             if (blob)
             {
@@ -476,6 +476,49 @@ namespace vultra
                 return std::unexpected(serialized.error());
             }
         }
+        // Modules linked into the program; an entry the file does not define may come from one of them.
+        std::vector<slang::IModule*> linkedModules;
+        for (const auto& path : compileOptions.linkModules)
+        {
+            const auto         resolved = path.is_absolute() ? path : source.parent_path() / path;
+            ComPtr<ISlangBlob> linkedBytes;
+            if (auto loaded = diagnose(fileSystem->loadFile(resolved.string().c_str(), linkedBytes.writeRef()),
+                                       {},
+                                       "Snapshot linked Slang module");
+                !loaded)
+            {
+                return std::unexpected(loaded.error());
+            }
+            const std::string linkedSource(static_cast<const char*>(linkedBytes->getBufferPointer()),
+                                           linkedBytes->getBufferSize());
+            diagnostics.setNull();
+            auto* linkedModule = session->loadModuleFromSourceString(resolved.stem().string().c_str(),
+                                                                     resolved.string().c_str(),
+                                                                     linkedSource.c_str(),
+                                                                     diagnostics.writeRef());
+            if (auto loaded = diagnose(linkedModule ? SLANG_OK : SLANG_FAIL, diagnostics, "Load linked Slang module");
+                !loaded)
+            {
+                return std::unexpected(loaded.error());
+            }
+            linkedModules.push_back(linkedModule);
+        }
+        for (const auto& linkSource : compileOptions.linkSources)
+        {
+            diagnostics.setNull();
+            const auto syntheticPath = source.parent_path() / (linkSource.name + ".slang");
+            auto*      linkedModule  = session->loadModuleFromSourceString(linkSource.name.c_str(),
+                                                                     syntheticPath.string().c_str(),
+                                                                     linkSource.value.c_str(),
+                                                                     diagnostics.writeRef());
+            if (auto loaded =
+                    diagnose(linkedModule ? SLANG_OK : SLANG_FAIL, diagnostics, "Load link-time Slang source");
+                !loaded)
+            {
+                return std::unexpected(loaded.error());
+            }
+            linkedModules.push_back(linkedModule);
+        }
         std::vector<ComPtr<slang::IEntryPoint>> entries;
         if (requested.empty())
         {
@@ -519,15 +562,25 @@ namespace vultra
                     }
                 }
                 diagnostics.setNull();
-                if (auto found = diagnose(module->findAndCheckEntryPoint(requested[i].name.c_str(),
-                                                                         stage,
-                                                                         entries[i].writeRef(),
-                                                                         diagnostics.writeRef()),
-                                          diagnostics,
-                                          "Find shader entry point");
-                    !found)
+                auto found = module->findAndCheckEntryPoint(requested[i].name.c_str(),
+                                                            stage,
+                                                            entries[i].writeRef(),
+                                                            diagnostics.writeRef());
+                for (auto* linked : linkedModules)
                 {
-                    return std::unexpected(found.error());
+                    if (SLANG_SUCCEEDED(found))
+                    {
+                        break;
+                    }
+                    ComPtr<ISlangBlob> ignored;
+                    found = linked->findAndCheckEntryPoint(requested[i].name.c_str(),
+                                                           stage,
+                                                           entries[i].writeRef(),
+                                                           ignored.writeRef());
+                }
+                if (auto checked = diagnose(found, diagnostics, "Find shader entry point"); !checked)
+                {
+                    return std::unexpected(checked.error());
                 }
             }
         }
@@ -540,46 +593,9 @@ namespace vultra
         {
             components.push_back(entry);
         }
-        for (const auto& path : compileOptions.linkModules)
+        for (auto* linked : linkedModules)
         {
-            const auto         resolved = path.is_absolute() ? path : source.parent_path() / path;
-            ComPtr<ISlangBlob> linkedBytes;
-            if (auto loaded = diagnose(fileSystem->loadFile(resolved.string().c_str(), linkedBytes.writeRef()),
-                                       {},
-                                       "Snapshot linked Slang module");
-                !loaded)
-            {
-                return std::unexpected(loaded.error());
-            }
-            const std::string linkedSource(static_cast<const char*>(linkedBytes->getBufferPointer()),
-                                           linkedBytes->getBufferSize());
-            diagnostics.setNull();
-            auto* linkedModule = session->loadModuleFromSourceString(resolved.stem().string().c_str(),
-                                                                     resolved.string().c_str(),
-                                                                     linkedSource.c_str(),
-                                                                     diagnostics.writeRef());
-            if (auto loaded = diagnose(linkedModule ? SLANG_OK : SLANG_FAIL, diagnostics, "Load linked Slang module");
-                !loaded)
-            {
-                return std::unexpected(loaded.error());
-            }
-            components.push_back(linkedModule);
-        }
-        for (const auto& linkSource : compileOptions.linkSources)
-        {
-            diagnostics.setNull();
-            const auto syntheticPath = source.parent_path() / (linkSource.name + ".slang");
-            auto*      linkedModule  = session->loadModuleFromSourceString(linkSource.name.c_str(),
-                                                                           syntheticPath.string().c_str(),
-                                                                           linkSource.value.c_str(),
-                                                                           diagnostics.writeRef());
-            if (auto loaded =
-                    diagnose(linkedModule ? SLANG_OK : SLANG_FAIL, diagnostics, "Load link-time Slang source");
-                !loaded)
-            {
-                return std::unexpected(loaded.error());
-            }
-            components.push_back(linkedModule);
+            components.push_back(linked);
         }
         statistics.frontendMilliseconds           = milliseconds(frontendStarted);
         const auto                    linkStarted = Clock::now();

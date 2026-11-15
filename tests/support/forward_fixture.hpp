@@ -40,7 +40,8 @@ namespace support
         };
 
         ForwardFixture(vultra::Device& device, vultra::GpuScene& scene, vultra::Environment& environment) :
-            path(must(vultra::ForwardPath::create(device))),
+            path(must(vultra::createForwardPath(device))),
+            shading(static_cast<vultra::ForwardShadingStage*>(path->stage("shading"))),
             scene(scene),
             environment(environment)
         {
@@ -48,26 +49,27 @@ namespace support
 
         Outputs addPasses(vultra::RenderGraph& graph, vultra::Extent size)
         {
-            const auto resources = must(path->addPasses(graph, scene, environment, size));
-            must(vultra::validateSceneResources(*path, resources, graph));
+            const vultra::RenderView view {"main", size};
+            const auto resources = must(path->addPasses(graph, scene, environment, std::span(&view, 1))).front();
             return {must(vultra::findSceneResource(resources, vultra::kSceneHdr)),
                     must(vultra::findSceneResource(resources, vultra::kSceneDepth))};
         }
 
         void prepare(const vultra::RenderCamera& camera, vultra::RenderGraph& graph)
         {
-            path->settings = settings;
+            shading->settings = settings;
             const vultra::RenderLight sun {.kind             = vultra::RenderLightKind::eDirectional,
                                            .directionToLight = settings.directionToLight,
                                            .color            = settings.lightColor,
                                            .intensity        = settings.lightIntensity};
-            must(path->prepare(graph, camera, std::span(&sun, 1)));
+            must(path->prepare(graph, std::span(&camera, 1), std::span(&sun, 1)));
         }
 
-        std::unique_ptr<vultra::ForwardPath> path;
-        Settings                             settings;
-        vultra::GpuScene&                    scene;
-        vultra::Environment&                 environment;
+        std::unique_ptr<vultra::RenderPath> path;
+        vultra::ForwardShadingStage*        shading; // Owned by the path.
+        Settings                            settings;
+        vultra::GpuScene&                   scene;
+        vultra::Environment&                environment;
     };
 
     // Renders one completed frame and returns the checked scene.hdr readback.

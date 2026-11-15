@@ -21,6 +21,15 @@ namespace vultra
         glm::vec3 extent {0};
     };
 
+    // One record of the primitive transform buffer, scene.instances. Keep in sync with
+    // builtin/shaders/resources/primitive_transform.slangh.
+    struct PrimitiveTransform
+    {
+        glm::mat4 model;
+        glm::mat4 normal;
+        glm::vec4 properties; // Tangent handedness, conservative sphere scale.
+    };
+
     class GpuScene
     {
     public:

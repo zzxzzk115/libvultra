@@ -95,6 +95,24 @@ namespace vultra
                         return 0;
                     }
                     break;
+                case Usage::eVertexBuffer:
+                    if (!texture)
+                    {
+                        return VriBufferUsage_VertexBuffer;
+                    }
+                    break;
+                case Usage::eIndexBuffer:
+                    if (!texture)
+                    {
+                        return VriBufferUsage_IndexBuffer;
+                    }
+                    break;
+                case Usage::eConstantBuffer:
+                    if (!texture)
+                    {
+                        return VriBufferUsage_ConstantBuffer;
+                    }
+                    break;
             }
             return makeError("Unsupported graph usage for this resource type");
         }
@@ -151,6 +169,12 @@ namespace vultra
                     return {VriAccess_CopyDestinationWrite, VriLayout_CopyDestination, VriPipelineStage_Transfer};
                 case Usage::ePresent:
                     return {VriAccess_None, VriLayout_Present, VriPipelineStage_AllCommands};
+                case Usage::eVertexBuffer:
+                    return {VriAccess_VertexBufferRead, VriLayout_Undefined, VriPipelineStage_VertexInput};
+                case Usage::eIndexBuffer:
+                    return {VriAccess_IndexBufferRead, VriLayout_Undefined, VriPipelineStage_VertexInput};
+                case Usage::eConstantBuffer:
+                    return {VriAccess_ConstantBufferRead, VriLayout_Undefined, VriPipelineStage_AllCommands};
             }
             panic("Unknown graph usage");
         }
@@ -159,7 +183,8 @@ namespace vultra
         bool computeUsage(Usage usage)
         {
             return usage == Usage::eSampled || usage == Usage::eStorageRead || usage == Usage::eStorageWrite ||
-                   usage == Usage::eStorageReadWrite || usage == Usage::eCopySource || usage == Usage::eCopyDestination;
+                   usage == Usage::eStorageReadWrite || usage == Usage::eCopySource ||
+                   usage == Usage::eCopyDestination || usage == Usage::eConstantBuffer;
         }
 
         // A compute queue cannot name these states as the source of a transition.
@@ -244,6 +269,12 @@ namespace vultra
                 return "copy destination";
             case Usage::ePresent:
                 return "present";
+            case Usage::eVertexBuffer:
+                return "vertex buffer";
+            case Usage::eIndexBuffer:
+                return "index buffer";
+            case Usage::eConstantBuffer:
+                return "constant buffer";
         }
         panic("Unknown graph usage");
     }

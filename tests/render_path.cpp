@@ -10,11 +10,13 @@
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/glm.hpp>
+#include <glm/gtc/epsilon.hpp>
 #include <openpbr.h>
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -52,7 +54,7 @@ namespace
         using namespace vultra;
         const auto program   = must(ShaderProgram::compile("builtin/shaders/passes/texture_blit.slang",
                                                            {},
-                                                           std::array {std::filesystem::path("builtin/shaders")}));
+                                                         std::array {std::filesystem::path("builtin/shaders")}));
         const auto bindings  = must(program.resourceBindings());
         const auto constants = std::ranges::find(bindings, true, &ShaderResourceBinding::pushConstant);
         require(constants != bindings.end() && constants->uniformSize == 32,
@@ -306,7 +308,7 @@ namespace
             must(graph.compile());
             must(gpu.setPrimitiveTransforms(0, 1, glm::mat4(1)));
             const auto stationary = render(device, renderer, graph, outputs, camera);
-            require(renderer.path->visiblePrimitives() == 1, "Visible triangle was culled");
+            require(renderer.shading->visiblePrimitives() == 1, "Visible triangle was culled");
             const auto mixedFrame = must(Frame::create(device));
             for (uint32_t iteration = 0; iteration < 2; ++iteration)
             {
@@ -332,21 +334,21 @@ namespace
                                             glm::translate(glm::mat4(1), {1, 0, 0}) *
                                                 glm::scale(glm::mat4(1), {-0.5f, 0.8f, 1})));
             const auto partial = render(device, renderer, graph, outputs, camera);
-            require(renderer.path->visiblePrimitives() == 1 && std::ranges::any_of(partial.rgba,
-                                                                                   [](float value)
-                                                                                   {
-                                                                                       return value > 1.5f;
-                                                                                   }),
+            require(renderer.shading->visiblePrimitives() == 1 && std::ranges::any_of(partial.rgba,
+                                                                                      [](float value)
+                                                                                      {
+                                                                                          return value > 1.5f;
+                                                                                      }),
                     "A reflected, nonuniformly scaled triangle intersecting the frustum must remain visible");
             must(gpu.setPrimitiveTransforms(0, 1, glm::translate(glm::mat4(1), {2, 0, 0})));
             const auto moved = render(device, renderer, graph, outputs, camera);
-            require(renderer.path->visiblePrimitives() == 0, "Offscreen triangle was still submitted");
+            require(renderer.shading->visiblePrimitives() == 0, "Offscreen triangle was still submitted");
             const size_t center = (32 * 65 + 32) * 4;
             require(stationary.rgba[center] > 0.5f && moved.rgba[center] < stationary.rgba[center] * 0.05f,
                     "Primitive transform did not move rendered geometry");
             must(gpu.setPrimitiveTransforms(0, 1, glm::scale(glm::mat4(1), {-1, 1, 1})));
             const auto mirrored = render(device, renderer, graph, outputs, camera);
-            require(renderer.path->visiblePrimitives() == 1, "Mirrored bounds were incorrectly culled");
+            require(renderer.shading->visiblePrimitives() == 1, "Mirrored bounds were incorrectly culled");
             require(mirrored.rgba[center] > 0.5f, "Mirrored primitive was culled");
         }
     }
@@ -366,21 +368,22 @@ namespace
         scene.radius        = 3;
         const auto gpuScene = must(vultra::GpuScene::create(device, scene));
         auto&      gpu      = *gpuScene;
-        const auto forward  = must(vultra::ForwardPath::create(device));
+        const auto forward  = must(vultra::createForwardPath(device));
         auto&      path     = *forward;
-        path.settings.ibl   = false;
+        static_cast<vultra::ForwardShadingStage*>(path.stage("shading"))->settings.ibl = false;
         const vultra::RenderCamera camera {glm::lookAtRH(glm::vec3(0, 0, 3), glm::vec3(0), glm::vec3(0, 1, 0)),
                                            glm::perspectiveRH_ZO(glm::radians(45.0f), 1.0f, 0.1f, 10.0f),
                                            0.1f,
                                            10};
         vultra::RenderGraph        graph(device);
-        const auto                 resources = must(path.addPasses(graph, gpu, environment, {65, 65}));
-        const auto                 hdr       = must(vultra::findSceneResource(resources, vultra::kSceneHdr));
+        const vultra::RenderView   view {"main", {65, 65}};
+        const auto resources = must(path.addPasses(graph, gpu, environment, std::span(&view, 1))).front();
+        const auto hdr       = must(vultra::findSceneResource(resources, vultra::kSceneHdr));
         must(graph.exportResource(hdr));
         must(graph.compile());
         const auto render = [&](std::span<const vultra::RenderLight> lights)
         {
-            must(path.prepare(graph, camera, lights));
+            must(path.prepare(graph, std::span(&camera, 1), lights));
             const auto frame = must(vultra::Frame::create(device));
             run(*frame, graph);
             return must(vultra::readback(device, graph.getTexture(hdr)));
@@ -681,15 +684,32 @@ namespace
         std::cout << "Tangent-frame normals and isolated textured HDR emission passed\n";
     }
 
-    // A second, unrelated render path written only against the public interfaces: it shades world normals
-    // with its own shader and layout. Later passes consume it through the same standard resource names.
-    class NormalPath final : public vultra::RenderPath
+    // A second, unrelated shading stage written only against the public interfaces: it shades world normals
+    // with its own shader and layout. When a frame stage provides test.background, each view starts from a
+    // copy of it. Later passes consume it through the same standard resource names.
+    class NormalStage final : public vultra::RenderStage
     {
     public:
-        NormalPath(vultra::Device& device, const std::filesystem::path& directory) :
+        static vultra::StageType type(const std::filesystem::path& directory)
+        {
+            using namespace vultra;
+            return {
+                {"test.normal_shading",
+                 {"shading"},
+                 StageScope::eView,
+                 {{std::string(kSceneVertices)}, {std::string(kSceneIndices)}, {"test.background", true}},
+                 {{std::string(kSceneHdr), VriFormat_RGBA16_SFLOAT, "color.linear.hdr"},
+                  {std::string(kSceneDepth), VriFormat_D32_SFLOAT, "depth"}}},
+                [directory](Device& device, const AssetSource*) -> std::expected<std::unique_ptr<RenderStage>, Error>
+                {
+                    return std::make_unique<NormalStage>(device, directory);
+                }};
+        }
+
+        NormalStage(vultra::Device& device, const std::filesystem::path& directory) :
             m_Device(device)
         {
-            const auto file = directory / "normal_path.slang";
+            const auto file = directory / "normal_stage.slang";
             std::ofstream(file) << R"(
 struct Parameters { float4x4 clipFromLocal; float4x4 worldFromLocal; };
 [[vk::push_constant]] ConstantBuffer<Parameters> parameters;
@@ -712,7 +732,7 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
             layout.pushConstantNum = 1;
             layout.shaderStages    = push.shaderStages;
             must(vultra::check(device.core.CreatePipelineLayout(device.handle, &layout, &m_Layout),
-                               "Normal path layout"));
+                               "Normal stage layout"));
             m_Pipeline = must(vultra::ShaderPipeline::create(
                 device,
                 file,
@@ -748,7 +768,7 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
                     VriPipeline* result                  = nullptr;
                     if (auto created =
                             vultra::check(m_Device.core.CreateGraphicsPipeline(m_Device.handle, &desc, &result),
-                                          "Normal path pipeline");
+                                          "Normal stage pipeline");
                         !created)
                     {
                         return std::unexpected(created.error());
@@ -757,42 +777,78 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
                 }));
         }
 
-        ~NormalPath() override
+        ~NormalStage() override
         {
             m_Device.waitIdleForDestruction();
             m_Pipeline.reset();
             m_Device.core.DestroyPipelineLayout(m_Layout);
         }
 
-        std::span<const vultra::SceneResourceDesc> provides() const override
-        {
-            return m_Provided;
-        }
-
-        std::expected<vultra::SceneResources, vultra::Error> addPasses(vultra::RenderGraph& graph,
-                                                                       vultra::GpuScene&    scene,
-                                                                       vultra::Environment&,
-                                                                       vultra::Extent size) override
+        std::expected<vultra::SceneResources, vultra::Error> addPasses(vultra::StageBuild& build) override
         {
             using namespace vultra;
-            m_Scene          = &scene;
-            const auto color = graph.createTexture(std::string(kSceneHdr), colorTexture(size, VriFormat_RGBA16_SFLOAT));
+            m_Scene = &build.scene;
+            m_ViewProjections.resize(build.views.size());
+            const auto size     = build.views[*build.view].size;
+            const auto vertices = findSceneResource(build.resources, kSceneVertices);
+            const auto indices  = findSceneResource(build.resources, kSceneIndices);
+            if (!vertices || !indices)
+            {
+                return makeError("The normal stage needs the geometry buffers");
+            }
+            const auto color =
+                build.graph.createTexture(build.graphName(kSceneHdr), colorTexture(size, VriFormat_RGBA16_SFLOAT));
             if (!color)
             {
                 return std::unexpected(color.error());
             }
             auto depthDesc = depthTexture(size);
             depthDesc.usage |= VriTextureUsage_TransferSrc;
-            const auto depth = graph.createTexture(std::string(kSceneDepth), depthDesc);
+            const auto depth = build.graph.createTexture(build.graphName(kSceneDepth), depthDesc);
             if (!depth)
             {
                 return std::unexpected(depth.error());
             }
-            auto added = graph.addPass(
-                "Normals",
-                {{*color, Usage::eColorWrite, true}, {*depth, Usage::eDepthWrite, true}},
-                [this, color = *color, depth = *depth, size](VriCommandBuffer* cmd,
-                                                             RenderGraph&      resources) -> std::expected<void, Error>
+            const auto background = findSceneResource(build.resources, "test.background");
+            if (background)
+            {
+                auto copied = build.graph.addPass(
+                    build.graphName("Copy background"),
+                    {{*background, Usage::eCopySource}, {*color, Usage::eCopyDestination, true}},
+                    [this, source = *background, target = *color](VriCommandBuffer* cmd,
+                                                                  RenderGraph& resources) -> std::expected<void, Error>
+                    {
+                        VriTextureCopyDesc copy {};
+                        copy.src.layerNum = 1;
+                        copy.dst.layerNum = 1;
+                        copy.src.aspect   = VriImageAspect_Color;
+                        copy.dst.aspect   = VriImageAspect_Color;
+                        m_Device.core.CmdCopyTexture(cmd,
+                                                     resources.getTexture(target).handle,
+                                                     resources.getTexture(source).handle,
+                                                     &copy);
+                        return {};
+                    });
+                if (!copied)
+                {
+                    return std::unexpected(copied.error());
+                }
+            }
+            const bool keep  = bool(background);
+            auto       added = build.graph.addPass(
+                build.graphName("Normals"),
+                {{*color, keep ? Usage::eColorReadWrite : Usage::eColorWrite, !keep},
+                       {*depth, Usage::eDepthWrite, true},
+                       {*vertices, Usage::eVertexBuffer},
+                       {*indices, Usage::eIndexBuffer}},
+                [this,
+                 color    = *color,
+                 depth    = *depth,
+                 vertices = *vertices,
+                 indices  = *indices,
+                 size,
+                 keep,
+                 view = *build.view](VriCommandBuffer* cmd, RenderGraph& resources) -> std::expected<void, Error>
                 {
                     const auto colorView = resources.getTexture(color).view();
                     if (!colorView)
@@ -806,7 +862,7 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
                     }
                     VriAttachmentDesc colorAttachment {};
                     colorAttachment.view    = *colorView;
-                    colorAttachment.loadOp  = VriAttachmentLoadOp_Clear;
+                    colorAttachment.loadOp  = keep ? VriAttachmentLoadOp_Load : VriAttachmentLoadOp_Clear;
                     colorAttachment.storeOp = VriAttachmentStoreOp_Store;
                     VriAttachmentDesc depthAttachment {};
                     depthAttachment.view                          = *depthView;
@@ -826,14 +882,14 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
                     m_Device.core.CmdSetScissors(cmd, &scissor, 1);
                     m_Device.core.CmdSetPipelineLayout(cmd, m_Layout);
                     m_Device.core.CmdSetPipeline(cmd, m_Pipeline->handle());
-                    const VriVertexBufferBinding vertices {m_Scene->vertices->handle, 0};
-                    m_Device.core.CmdSetVertexBuffers(cmd, 0, &vertices, 1);
-                    m_Device.core.CmdSetIndexBuffer(cmd, m_Scene->indices->handle, 0, VriIndexType_UInt32);
+                    const VriVertexBufferBinding binding {resources.getBuffer(vertices).handle, 0};
+                    m_Device.core.CmdSetVertexBuffers(cmd, 0, &binding, 1);
+                    m_Device.core.CmdSetIndexBuffer(cmd, resources.getBuffer(indices).handle, 0, VriIndexType_UInt32);
                     for (uint32_t index = 0; index < m_Scene->primitives.size(); ++index)
                     {
                         const auto&      primitive = m_Scene->primitives[index];
                         const auto&      world     = m_Scene->primitiveTransform(index);
-                        const Parameters parameters {m_ViewProjection * world, world};
+                        const Parameters parameters {m_ViewProjections[view] * world, world};
                         m_Device.core.CmdSetConstants(cmd, 0, &parameters, sizeof(parameters));
                         const VriDrawIndexedDesc draw {primitive.indexCount, 1, primitive.firstIndex, 0, 0};
                         m_Device.core.CmdDrawIndexed(cmd, &draw);
@@ -848,10 +904,10 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
             return SceneResources {{std::string(kSceneHdr), *color}, {std::string(kSceneDepth), *depth}};
         }
 
-        std::expected<void, vultra::Error>
-        prepare(vultra::RenderGraph&, const vultra::RenderCamera& camera, std::span<const vultra::RenderLight>) override
+        std::expected<void, vultra::Error> prepare(vultra::RenderGraph&, const vultra::StageFrame& frame) override
         {
-            m_ViewProjection = camera.projection * camera.view;
+            const auto& camera             = frame.cameras[*frame.view];
+            m_ViewProjections[*frame.view] = camera.projection * camera.view;
             return {};
         }
 
@@ -862,22 +918,83 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
             glm::mat4 worldFromLocal;
         };
 
-        vultra::Device&                          m_Device;
-        vultra::GpuScene*                        m_Scene  = nullptr;
-        VriPipelineLayout*                       m_Layout = nullptr;
-        std::unique_ptr<vultra::ShaderPipeline>  m_Pipeline;
-        glm::mat4                                m_ViewProjection {1};
-        std::array<vultra::SceneResourceDesc, 2> m_Provided {
-            vultra::SceneResourceDesc {std::string(vultra::kSceneHdr), VriFormat_RGBA16_SFLOAT, "color.linear.hdr"},
-            vultra::SceneResourceDesc {std::string(vultra::kSceneDepth), VriFormat_D32_SFLOAT, "depth"}};
+        vultra::Device&                         m_Device;
+        vultra::GpuScene*                       m_Scene  = nullptr;
+        VriPipelineLayout*                      m_Layout = nullptr;
+        std::unique_ptr<vultra::ShaderPipeline> m_Pipeline;
+        std::vector<glm::mat4>                  m_ViewProjections;
     };
 
-    // The same scene, camera and consumer code run through two render paths selected at runtime.
-    void
-    switchRenderPaths(vultra::Device& device, vultra::Environment& environment, const std::filesystem::path& directory)
+    // A frame stage: one clear of test.background, which every view then copies.
+    class BackgroundStage final : public vultra::RenderStage
     {
-        using namespace vultra;
-        SceneData scene;
+    public:
+        static constexpr std::array<float, 4> kColor {0.25f, 0.5f, 0.75f, 1};
+
+        static vultra::StageType type()
+        {
+            using namespace vultra;
+            return {{"test.background",
+                     {"background"},
+                     StageScope::eFrame,
+                     {},
+                     {{"test.background", VriFormat_RGBA16_SFLOAT, "color.linear.hdr"}}},
+                    [](Device& device, const AssetSource*) -> std::expected<std::unique_ptr<RenderStage>, Error>
+                    {
+                        return std::make_unique<BackgroundStage>(device);
+                    }};
+        }
+
+        explicit BackgroundStage(vultra::Device& device) :
+            m_Device(device)
+        {
+        }
+
+        std::expected<vultra::SceneResources, vultra::Error> addPasses(vultra::StageBuild& build) override
+        {
+            using namespace vultra;
+            const auto texture =
+                build.graph.createTexture(build.graphName("test.background"),
+                                          colorTexture(build.views.front().size, VriFormat_RGBA16_SFLOAT));
+            if (!texture)
+            {
+                return std::unexpected(texture.error());
+            }
+            const auto added = build.graph.addPass(
+                build.graphName("Background"),
+                {{*texture, Usage::eColorWrite, true}},
+                [this, target = *texture](VriCommandBuffer* cmd, RenderGraph& resources) -> std::expected<void, Error>
+                {
+                    auto&      texture = resources.getTexture(target);
+                    const auto view    = texture.view();
+                    if (!view)
+                    {
+                        return std::unexpected(view.error());
+                    }
+                    beginColorPass(m_Device, cmd, *view, {texture.desc.width, texture.desc.height}, kColor.data());
+                    m_Device.core.CmdEndRendering(cmd);
+                    return {};
+                });
+            if (!added)
+            {
+                return std::unexpected(added.error());
+            }
+            return SceneResources {{"test.background", *texture}};
+        }
+
+        std::expected<void, vultra::Error> prepare(vultra::RenderGraph&, const vultra::StageFrame& frame) override
+        {
+            require(!frame.view && frame.cameras.size() >= 1, "A frame stage was prepared for a single view");
+            return {};
+        }
+
+    private:
+        vultra::Device& m_Device;
+    };
+
+    vultra::SceneData quadScene()
+    {
+        vultra::SceneData scene;
         scene.vertices   = {{{-2, -2, 0}, {0, 0, 1}, {0, 0}},
                             {{2, -2, 0}, {0, 0, 1}, {1, 0}},
                             {{2, 2, 0}, {0, 0, 1}, {1, 1}},
@@ -888,31 +1005,84 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
         scene.materials[0].emissionColor     = {0, 0, 1};
         scene.materials[0].emissionLuminance = 3;
         scene.radius                         = 3;
-        const auto         gpu               = must(GpuScene::create(device, scene));
-        const RenderCamera camera {glm::lookAtRH(glm::vec3(0, 0, 3), glm::vec3(0), glm::vec3(0, 1, 0)),
-                                   glm::perspectiveRH_ZO(glm::radians(45.0f), 1.0f, 0.1f, 10.0f),
-                                   0.1f,
-                                   10};
-        const auto         forwardPath = must(ForwardPath::create(device));
-        auto&              forward     = *forwardPath;
-        NormalPath         normals(device, directory);
-        forward.settings.ibl                       = false;
-        forward.settings.skybox                    = false;
+        return scene;
+    }
+
+    vultra::RenderCamera quadCamera(glm::vec3 eye)
+    {
+        return {glm::lookAtRH(eye, glm::vec3(0), glm::vec3(0, 1, 0)),
+                glm::perspectiveRH_ZO(glm::radians(45.0f), 1.0f, 0.1f, 10.0f),
+                0.1f,
+                10};
+    }
+
+    // Renders one frame of a path for these views and returns each view's scene.hdr.
+    std::vector<vultra::Image> renderViews(vultra::Device&                       device,
+                                           vultra::RenderPath&                   path,
+                                           vultra::GpuScene&                     scene,
+                                           vultra::Environment&                  environment,
+                                           std::span<const vultra::RenderView>   views,
+                                           std::span<const vultra::RenderCamera> cameras,
+                                           std::vector<std::string>*             passes = nullptr)
+    {
+        using namespace vultra;
+        RenderGraph graph(device);
+        const auto  resources = must(path.addPasses(graph, scene, environment, views));
+        require(resources.size() == views.size(), "A render path returned resources for another number of views");
+        std::vector<RenderGraph::Resource> outputs;
+        for (const auto& view : resources)
+        {
+            outputs.push_back(must(findSceneResource(view, kSceneHdr)));
+            must(graph.exportResource(outputs.back()));
+        }
+        must(graph.compile());
+        must(path.prepare(graph, cameras, {}));
+        const auto frame = must(Frame::create(device));
+        run(*frame, graph);
+        std::vector<Image> images;
+        for (const auto output : outputs)
+        {
+            images.push_back(must(readback(device, graph.getTexture(output))));
+            finite(images.back());
+        }
+        if (passes)
+        {
+            *passes = graph.activePasses();
+        }
+        return images;
+    }
+
+    // The same scene, camera and consumer code run through two render paths selected at runtime.
+    void
+    switchRenderPaths(vultra::Device& device, vultra::Environment& environment, const std::filesystem::path& directory)
+    {
+        using namespace vultra;
+        const auto         gpu     = must(GpuScene::create(device, quadScene()));
+        const RenderCamera camera  = quadCamera({0, 0, 3});
+        const auto         forward = must(createForwardPath(device));
+        auto*              shading = static_cast<ForwardShadingStage*>(forward->stage("shading"));
+        const std::array   stages  = {meshStage(), NormalStage::type(directory)};
+        const auto         normals =
+            must(RenderPath::create(device,
+                                    {"test.normals", {{"geometry", "vultra.mesh"}, {"shading", "test.normal_shading"}}},
+                                    stages));
+        shading->settings.ibl                      = false;
+        shading->settings.skybox                   = false;
         constexpr size_t                    center = (32 * 65 + 32) * 4;
         std::array<std::array<float, 3>, 2> colors {};
         std::array<float, 2>                depths {};
-        const std::array<RenderPath*, 2>    paths {&forward, &normals};
+        const std::array<RenderPath*, 2>    paths {forward.get(), normals.get()};
+        const RenderView                    view {"main", {65, 65}};
         for (size_t index = 0; index < paths.size(); ++index)
         {
             RenderGraph graph(device);
-            const auto  resources = must(paths[index]->addPasses(graph, *gpu, environment, {65, 65}));
-            must(validateSceneResources(*paths[index], resources, graph));
-            const auto hdr   = must(findSceneResource(resources, kSceneHdr));
-            const auto depth = must(findSceneResource(resources, kSceneDepth));
+            const auto resources = must(paths[index]->addPasses(graph, *gpu, environment, std::span(&view, 1))).front();
+            const auto hdr       = must(findSceneResource(resources, kSceneHdr));
+            const auto depth     = must(findSceneResource(resources, kSceneDepth));
             must(graph.exportResource(hdr));
             must(graph.exportResource(depth));
             must(graph.compile());
-            must(paths[index]->prepare(graph, camera, {}));
+            must(paths[index]->prepare(graph, std::span(&camera, 1), {}));
             const auto frame = must(Frame::create(device));
             run(*frame, graph);
             const auto color = must(readback(device, graph.getTexture(hdr)));
@@ -926,31 +1096,237 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
         require(depths[0] > 0 && depths[0] < 1 && std::abs(depths[0] - depths[1]) < 1e-6f,
                 "Two render paths disagree on scene.depth for the same geometry and camera");
 
-        struct Incomplete final : RenderPath
+        // A stage must return exactly what its description provides.
+        struct Incomplete final : RenderStage
         {
-            std::span<const SceneResourceDesc> provides() const override
-            {
-                return declared;
-            }
-
-            std::expected<SceneResources, Error> addPasses(RenderGraph&, GpuScene&, Environment&, Extent) override
+            std::expected<SceneResources, Error> addPasses(StageBuild&) override
             {
                 return SceneResources {};
             }
 
-            std::expected<void, Error> prepare(RenderGraph&, const RenderCamera&, std::span<const RenderLight>) override
+            std::expected<void, Error> prepare(RenderGraph&, const StageFrame&) override
             {
                 return {};
             }
+        };
 
-            std::array<SceneResourceDesc, 1> declared {
-                SceneResourceDesc {std::string(kSceneHdr), VriFormat_RGBA16_SFLOAT, "color.linear.hdr"}};
-        } incomplete;
+        auto incomplete   = NormalStage::type(directory);
+        incomplete.create = [](Device&, const AssetSource*) -> std::expected<std::unique_ptr<RenderStage>, Error>
+        {
+            return std::make_unique<Incomplete>();
+        };
+        const std::array incompleteStages {meshStage(), incomplete};
+        const auto       broken =
+            must(RenderPath::create(device,
+                                    {"test.broken", {{"geometry", "vultra.mesh"}, {"shading", "test.normal_shading"}}},
+                                    incompleteStages));
+        RenderGraph graph(device);
+        support::rejects(broken->addPasses(graph, *gpu, environment, std::span(&view, 1)),
+                         "A stage that returned none of the resources it provides passed");
+        std::cout << "Render paths: forward and a custom normal stage share scene.hdr/scene.depth; contract checked\n";
+    }
 
-        RenderGraph empty(device);
-        support::rejects(validateSceneResources(incomplete, {}, empty),
-                         "A render path without scene.depth passed validation");
-        std::cout << "Render paths: forward and a custom normal path share scene.hdr/scene.depth; contract checked\n";
+    // Validation reads descriptions only, so every problem is found without a device.
+    void pathValidation()
+    {
+        using namespace vultra;
+        const auto texture = [](std::string name)
+        {
+            return SceneResourceDesc {std::move(name), VriFormat_RGBA16_SFLOAT, "color.linear.hdr"};
+        };
+        const std::vector<StageDesc> stages {
+            meshStage().desc,
+            forwardShadingStage().desc,
+            {"test.gbuffer",
+             {"visibility", "surface"},
+             StageScope::eView,
+             {{std::string(kSceneVertices)}},
+             {{std::string(kSceneDepth), VriFormat_D32_SFLOAT, "depth"}, texture("scene.normal")}},
+            {"test.direct",
+             {"direct"},
+             StageScope::eView,
+             {{"scene.normal"}, {"scene.shadow_mask", true}},
+             {texture("scene.direct")}},
+            {"test.compose", {"compose"}, StageScope::eView, {{"scene.direct"}}, {texture(std::string(kSceneHdr))}},
+            {"test.frame_blur", {"blur"}, StageScope::eFrame, {{"scene.direct"}}, {texture("test.blurred")}},
+            {"test.tlas", {"tlas"}, StageScope::eFrame, {}, {{"scene.tlas", VriFormat_Unknown, {}, true}}},
+            {"test.surface_cache", {"indirect"}, StageScope::eView, {{"scene.tlas"}}, {texture("scene.indirect")}},
+            {"test.lights",
+             {"lighting"},
+             StageScope::eView,
+             {{"scene.lights"}, {"camera.data"}},
+             {texture("test.lit")}},
+            {"test.own_lights", {"lights"}, StageScope::eFrame, {}, {{"scene.lights", VriFormat_Unknown, {}, true}}}};
+        const auto issues = [&](std::vector<PathSlot> slots)
+        {
+            return validateRenderPath({"test.path", std::move(slots)}, stages);
+        };
+        const auto expect = [&](std::vector<PathSlot> slots, PathIssueKind kind, size_t slot, std::string_view text)
+        {
+            const auto found = issues(std::move(slots));
+            const bool match = std::ranges::any_of(found,
+                                                   [&](const PathIssue& issue)
+                                                   {
+                                                       return issue.kind == kind && issue.slot == slot &&
+                                                              issue.message.find(text) != std::string::npos;
+                                                   });
+            if (!match)
+            {
+                for (const auto& issue : found)
+                {
+                    std::cerr << "  slot " << issue.slot << ": " << issue.message << '\n';
+                }
+                support::fail("Render path validation missed: " + std::string(text));
+            }
+        };
+
+        require(validateRenderPath(forwardPathDesc(), stages).empty(), "vultra.forward did not validate");
+        const std::vector<PathSlot> deferred {{"geometry", "vultra.mesh"},
+                                              {"visibility", "test.gbuffer"},
+                                              {"surface", "test.gbuffer"},
+                                              {"direct", "test.direct"},
+                                              {"compose", "test.compose"}};
+        require(issues(deferred).empty(), "A path with a two-slot stage and an optional need did not validate");
+
+        expect({{"geometry", "vultra.mesh"}, {"shading", "test.missing"}},
+               PathIssueKind::eUnknownStage,
+               1,
+               "unknown stage 'test.missing'");
+        expect({{"shading", "vultra.mesh"}}, PathIssueKind::eWrongSlot, 0, "it fills 'geometry'");
+        expect({{"geometry", "vultra.mesh"}, {"visibility", "test.gbuffer"}, {"direct", "test.direct"}},
+               PathIssueKind::ePartialStage,
+               1,
+               "fills the slots 'visibility', 'surface' together");
+        expect({{"geometry", "vultra.mesh"}, {"geometry", "vultra.mesh"}, {"shading", "vultra.forward_shading"}},
+               PathIssueKind::eDuplicateSlot,
+               1,
+               "slot 'geometry' appears twice");
+        // VG011 names who could provide the missing resource.
+        expect({{"geometry", "vultra.mesh"}, {"shading", "vultra.forward_shading"}, {"indirect", "test.surface_cache"}},
+               PathIssueKind::eMissingNeed,
+               2,
+               "stage 'test.surface_cache' (indirect) needs 'scene.tlas', which nothing before it provides; stage "
+               "'test.tlas' provides it");
+        expect({{"shading", "vultra.forward_shading"}, {"geometry", "vultra.mesh"}},
+               PathIssueKind::eMissingNeed,
+               0,
+               "needs 'scene.vertices'");
+        expect({{"geometry", "vultra.mesh"}, {"visibility", "test.gbuffer"}, {"surface", "test.gbuffer"}},
+               PathIssueKind::eMissingStandard,
+               3,
+               "does not provide 'scene.hdr'");
+        expect({{"geometry", "vultra.mesh"},
+                {"visibility", "test.gbuffer"},
+                {"surface", "test.gbuffer"},
+                {"shading", "vultra.forward_shading"}},
+               PathIssueKind::eDuplicateProvide,
+               3,
+               "provides 'scene.depth', which stage 'test.gbuffer' (visibility) provides already");
+        auto frameAfterView = deferred;
+        frameAfterView.push_back({"blur", "test.frame_blur"});
+        expect(frameAfterView, PathIssueKind::eFrameNeedsView, 5, "runs once per frame but needs 'scene.direct'");
+        // scene.lights and camera.data come from the path itself, before any stage.
+        auto withInputs = deferred;
+        withInputs.push_back({"lighting", "test.lights"});
+        require(issues(withInputs).empty(), "A stage could not read the path's own scene.lights and camera.data");
+        expect({{"lights", "test.own_lights"}, {"geometry", "vultra.mesh"}, {"shading", "vultra.forward_shading"}},
+               PathIssueKind::eDuplicateProvide,
+               0,
+               "provides 'scene.lights', which the render path itself provides already");
+        std::cout << "Render path validation: every problem kind found from descriptions alone\n";
+    }
+
+    // One path, two views: frame stages run once, view stages once per view, and each view equals a
+    // render of that view alone.
+    void twoViews(vultra::Device& device, vultra::Environment& environment, const std::filesystem::path& directory)
+    {
+        using namespace vultra;
+        const auto       gpu = must(GpuScene::create(device, quadScene()));
+        const std::array views {RenderView {"left", {65, 65}}, RenderView {"right", {65, 65}}};
+        const std::array cameras {quadCamera({-0.4f, 0.2f, 6}), quadCamera({0.4f, -0.3f, 7})};
+
+        const auto forward                                                         = must(createForwardPath(device));
+        static_cast<ForwardShadingStage*>(forward->stage("shading"))->settings.ibl = false;
+        std::vector<std::string> passes;
+        const auto               both = renderViews(device, *forward, *gpu, environment, views, cameras, &passes);
+        require(passes == std::vector<std::string> {"left:Skybox", "left:Forward", "right:Skybox", "right:Forward"},
+                "vultra.forward did not add its view passes once per view under the view's name");
+        for (size_t view = 0; view < views.size(); ++view)
+        {
+            const RenderView alone {"main", views[view].size};
+            const auto       single =
+                renderViews(device, *forward, *gpu, environment, std::span(&alone, 1), std::span(&cameras[view], 1));
+            require(single.front().rgba == both[view].rgba,
+                    "A view of a two-view forward render differs from rendering it alone");
+        }
+        require(both[0].rgba != both[1].rgba, "Two views with different cameras rendered the same image");
+
+        const std::array stages {meshStage(), BackgroundStage::type(), NormalStage::type(directory)};
+        const auto       path   = must(RenderPath::create(
+            device,
+            {"test.background_normals",
+                     {{"geometry", "vultra.mesh"}, {"background", "test.background"}, {"shading", "test.normal_shading"}}},
+            stages));
+        const auto       images = renderViews(device, *path, *gpu, environment, views, cameras, &passes);
+        require(std::ranges::count(passes, "Background") == 1 && std::ranges::count(passes, "left:Normals") == 1 &&
+                    std::ranges::count(passes, "right:Normals") == 1,
+                "A frame stage pass must appear once and a view stage pass once per view");
+        for (size_t view = 0; view < views.size(); ++view)
+        {
+            for (uint32_t channel = 0; channel < 4; ++channel)
+            {
+                require(images[view].rgba[channel] == BackgroundStage::kColor[channel],
+                        "A view did not start from the frame stage's background");
+            }
+            const RenderView alone {"main", views[view].size};
+            const auto       single =
+                renderViews(device, *path, *gpu, environment, std::span(&alone, 1), std::span(&cameras[view], 1));
+            require(single.front().rgba == images[view].rgba,
+                    "A view of a two-view render with a frame stage differs from rendering it alone");
+        }
+
+        // The path's own inputs: one scene.lights for the frame and a camera.data per view, written by prepare().
+        {
+            RenderGraph graph(device);
+            const auto  resources = must(forward->addPasses(graph, *gpu, environment, views));
+            must(graph.compile());
+            const auto read = [&](size_t view)
+            {
+                auto&      buffer = graph.getBuffer(must(findSceneResource(resources[view], kCameraData)));
+                CameraData data {};
+                auto*      mapped = device.core.MapBuffer(buffer.handle, 0, sizeof(data));
+                require(mapped != nullptr, "Map camera.data");
+                std::memcpy(&data, mapped, sizeof(data));
+                device.core.UnmapBuffer(buffer.handle);
+                return data;
+            };
+            require(must(findSceneResource(resources[0], kSceneLights)).index ==
+                        must(findSceneResource(resources[1], kSceneLights)).index,
+                    "scene.lights must be one frame resource shared by the views");
+            must(forward->prepare(graph, cameras, {}));
+            for (size_t view = 0; view < views.size(); ++view)
+            {
+                const auto data     = read(view);
+                const auto expected = cameras[view].projection * cameras[view].view;
+                require(data.viewProjection == expected && data.previousViewProjection == expected &&
+                            data.imageSize == glm::vec2(65, 65) && data.nearPlane == cameras[view].nearPlane &&
+                            data.farPlane == cameras[view].farPlane &&
+                            glm::all(glm::epsilonEqual(glm::vec3(data.position),
+                                                       glm::vec3(glm::inverse(cameras[view].view)[3]),
+                                                       1e-5f)),
+                        "camera.data does not hold the view's constants");
+            }
+            const std::array moved {quadCamera({0, 0, 5}), quadCamera({1, 1, 5})};
+            must(forward->prepare(graph, moved, {}));
+            for (size_t view = 0; view < views.size(); ++view)
+            {
+                const auto data = read(view);
+                require(data.previousViewProjection == cameras[view].projection * cameras[view].view &&
+                            data.viewProjection == moved[view].projection * moved[view].view,
+                        "camera.data does not keep the previous frame's view projection");
+            }
+        }
+        std::cout << "Two views: frame stage once, view stages per view, each view equal to its single render\n";
     }
 } // namespace
 
@@ -984,6 +1360,8 @@ int main()
     materialTextures(device, environment, vultra::TextureFormat::eRg8Unorm);
     tangentFramesAndEmission(device, environment);
     switchRenderPaths(device, environment, directory);
+    pathValidation();
+    twoViews(device, environment, directory);
     std::cout << "Forward path tests passed: constant HDR/IBL mip chain, BRDF LUT, upstream OpenPBR C++ reference, "
                  "material textures and live transforms\n";
     return 0;
