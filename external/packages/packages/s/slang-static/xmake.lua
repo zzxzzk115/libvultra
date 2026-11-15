@@ -8,10 +8,16 @@ package("slang-static")
     if is_plat("linux") then
         add_syslinks("dl", "pthread")
     end
+    -- DXIL output for Direct3D 12 builds through the DirectX Shader Compiler, which Slang loads at run time
+    -- (dxcompiler.dll). Its header ships in Slang's tree, so this needs no DXC download at build time.
+    add_configs("dxil", {description = "Compile Slang's DXIL (DXC) support", default = false, type = "boolean"})
 
     on_load(function (package)
         package:add("defines", "SLANG_STATIC")
         package:add("links", "slang-compiler", "compiler-core", "core", "lz4", "cmark-gfm")
+        if package:config("dxil") and package:is_plat("windows") then
+            package:add("syslinks", "ole32") -- the DXC bridge frees COM strings with CoTaskMemFree
+        end
     end)
 
     on_install("windows|x64", "linux|x86_64", function (package)
@@ -26,6 +32,14 @@ include_directories(${MINIZ_INCLUDE_DIRS})]], {plain = true})
         -- The GLSL module is EXCLUDE_FROM_ALL but Slang 2026.11 still installs it.
         -- Direct SPIR-V emission uses the embedded compiler and needs no module sidecar.
         io.replace("source/slang-glsl-module/CMakeLists.txt", "    INSTALL\n)", ")", {plain = true})
+        -- SLANG_ENABLE_DXIL also fetches DXC binaries at configure time; it stays off, and only the DXC
+        -- support it implies is compiled in.
+        if package:config("dxil") then
+            local flags = "cmake/CompilerFlags.cmake"
+            local implied = "SLANG_ENABLE_DXIL_SUPPORT=$<BOOL:${SLANG_ENABLE_DXIL}>"
+            assert(io.readfile(flags):find(implied, 1, true), "Slang DXIL support patch is outdated")
+            io.replace(flags, implied, "SLANG_ENABLE_DXIL_SUPPORT=1", {plain = true})
+        end
         -- This static build omits slang-glslang, so do not register its downstream locators.
         -- Direct SPIR-V emission can proceed without the optional SPIRV-Opt module.
         local locators = "source/compiler-core/slang-downstream-compiler-util.cpp"

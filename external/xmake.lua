@@ -32,7 +32,7 @@ if features.platform then
     add_requires((vri_dir and vri_dir ~= "") and "vri-vultra-local" or "vri v0.2.1", {
         alias = "vri",
         configs = {vulkan = api == "vulkan", gl = api == "webgl2", wgpu = api == "webgpu",
-                   d3d12 = false, metal = api == "metal"}
+                   d3d12 = api == "d3d12", metal = api == "metal"}
     })
 end
 
@@ -40,7 +40,9 @@ if features.shader or features.assets then
     add_requires("xxhash v0.8.3")
 end
 if shader_compiler then
-    add_requires("slang-static 2026.11")
+    -- D3D12 shaders are DXIL, which Slang produces through the DirectX Shader Compiler.
+    local dxil = get_config("libvultra_graphics_api") == "d3d12"
+    add_requires("slang-static 2026.11", {configs = {dxil = dxil}})
     -- The static Slang build has no SPIRV-Opt module; the shader compiler runs the optimizer itself.
     add_requires("spirv-tools 1.4.309+0")
 end
