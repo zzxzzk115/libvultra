@@ -14,22 +14,26 @@ struct MaterialData
     uint4  instance; // Transform buffer index; the remaining lanes are reserved.
 };
 
+// D3D12 registers follow VRI's mapping of the material set (space 1): textures and samplers count from 0 in the
+// layout's range order. Slang places the push constants at b2 in space 0, the first register after the frame
+// set's two pinned constant buffers. An explicit register would also reserve a descriptor slot in the SPIR-V and
+// WGSL layouts.
 [[vk::push_constant]] ConstantBuffer<MaterialData> material;
-[[vk::binding(0, 1)]] Texture2D<float4>            baseColorTexture;
-[[vk::binding(1, 1)]] Texture2D<float4>            metallicRoughnessTexture;
-[[vk::binding(2, 1)]] Texture2D<float4>            normalTexture;
-[[vk::binding(3, 1)]] Texture2D<float4>            occlusionTexture;
-[[vk::binding(4, 1)]] Texture2D<float4>            emissionTexture;
-[[vk::binding(5, 1)]] Texture2D<float4>            specularTexture;
-[[vk::binding(6, 1)]] Texture2D<float4>            specularColorTexture;
+[[vk::binding(0, 1)]] Texture2D<float4>            baseColorTexture : register(t0, space1);
+[[vk::binding(1, 1)]] Texture2D<float4>            metallicRoughnessTexture : register(t1, space1);
+[[vk::binding(2, 1)]] Texture2D<float4>            normalTexture : register(t2, space1);
+[[vk::binding(3, 1)]] Texture2D<float4>            occlusionTexture : register(t3, space1);
+[[vk::binding(4, 1)]] Texture2D<float4>            emissionTexture : register(t4, space1);
+[[vk::binding(5, 1)]] Texture2D<float4>            specularTexture : register(t5, space1);
+[[vk::binding(6, 1)]] Texture2D<float4>            specularColorTexture : register(t6, space1);
 // One sampler per texture: WebGPU has no binding arrays.
-[[vk::binding(7, 1)]] SamplerState                 baseColorSampler;
-[[vk::binding(8, 1)]] SamplerState                 metallicRoughnessSampler;
-[[vk::binding(9, 1)]] SamplerState                 normalSampler;
-[[vk::binding(10, 1)]] SamplerState                occlusionSampler;
-[[vk::binding(11, 1)]] SamplerState                emissionSampler;
-[[vk::binding(12, 1)]] SamplerState                specularSampler;
-[[vk::binding(13, 1)]] SamplerState                specularColorSampler;
+[[vk::binding(7, 1)]] SamplerState                 baseColorSampler : register(s0, space1);
+[[vk::binding(8, 1)]] SamplerState                 metallicRoughnessSampler : register(s1, space1);
+[[vk::binding(9, 1)]] SamplerState                 normalSampler : register(s2, space1);
+[[vk::binding(10, 1)]] SamplerState                occlusionSampler : register(s3, space1);
+[[vk::binding(11, 1)]] SamplerState                emissionSampler : register(s4, space1);
+[[vk::binding(12, 1)]] SamplerState                specularSampler : register(s5, space1);
+[[vk::binding(13, 1)]] SamplerState                specularColorSampler : register(s6, space1);
 
 // The base color of the bound material at `uv`; discards a fragment below its alpha cutoff.
 float4 vultraBaseColor(float2 uv, float4 color)

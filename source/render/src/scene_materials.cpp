@@ -90,7 +90,8 @@ namespace vultra
 
     VriPushConstantDesc SceneMaterials::constants()
     {
-        return {0, sizeof(MaterialData), VriShaderStage_Vertex | VriShaderStage_Fragment};
+        // Register b2: on D3D12 the frame set's constant buffers take b0 and b1 in the same space.
+        return {2, sizeof(MaterialData), VriShaderStage_Vertex | VriShaderStage_Fragment};
     }
 
     SceneMaterials::SceneMaterials(Device& device, VriPipelineLayout* layout, GpuScene& scene) :

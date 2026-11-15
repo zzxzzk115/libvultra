@@ -1,7 +1,7 @@
 #pragma once
 
 // Atlas uploaded by openpbr_luts.cpp; row 0 contains {offset, width, height, depth} per LUT ID.
-[[vk::binding(11, 0)]] Texture2D<float4> openPbrLuts;
+[[vk::binding(11, 0)]] Texture2D<float4> openPbrLuts : register(t4); // D3D12: the frame set's fifth texture range
 
 float4 loadOpenPbrLut(uint4 table, uint3 position)
 {
