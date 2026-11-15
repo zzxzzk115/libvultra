@@ -50,7 +50,7 @@ A root build defaults to all modules, all examples and the tests. Configuration 
 | `libvultra_shader_compiler` | Default on. `n` keeps only the cooked shader runtime: no Slang, no shader hot reload. |
 | `libvultra_asset_import` | Default on. `n` keeps asset values and VPK archives without importers or meshlet building. |
 | `libvultra_with_openxr` | Default on. `n` leaves `xr` out of `all`; selecting `xr` explicitly requires it. `xr` also requires `libvultra_graphics_api=vulkan`: it implements only the OpenXR Vulkan binding, so other APIs leave it out of `all`. |
-| `libvultra_graphics_api` | `metal` (default on macOS) or `vulkan` there; `vulkan` (default) or `webgpu` on other native platforms, the latter through wgpu-native from the `webgpu-sdk` package; WebAssembly requires `webgpu` or `webgl2`. |
+| `libvultra_graphics_api` | `metal` (default on macOS) or `vulkan` there; `vulkan` (default) or `webgpu` on other native platforms, the latter through wgpu-native from the `webgpu-sdk` package; `d3d12` on Windows; WebAssembly requires `webgpu` or `webgl2`. |
 | `libvultra_vri_dir` | Build VRI from a local checkout instead of the pinned release. |
 | `libvultra_build_examples`, `libvultra_build_tests` | Default on at the root, off when embedded. |
 | `libvultra_examples` | `all`, a group (`basics`, `offline`, `ui`), a mode (`basics.vri`) or a comma-separated union. |
@@ -146,6 +146,21 @@ graphics queue. Eligible devices are ranked by type (discrete, integrated, other
 exposed queues; the startup log records the selected GPU, VRAM, queue counts and feature mask. Required features
 are never dropped from a strict request. An explicit `VriDeviceCreationDesc` keeps its requested adapter.
 `xmake test -v test-device-selection/*` covers selection and unsupported-feature rejection.
+
+## Direct3D 12
+
+`--libvultra_graphics_api=d3d12` (Windows) compiles shaders to DXIL (shader model 6.6). Slang loads the DirectX
+Shader Compiler at run time, so a program that compiles shaders needs `dxcompiler.dll` on `PATH` or beside the
+executable (the Vulkan SDK and the Windows SDK ship it); cooked packs need no compiler. VRI v0.2.1 has D3D12
+defects that the kernel hits; until a release contains the fixes (VRI pull request 36), point
+`--libvultra_vri_dir` at a checkout that includes them. The `xr` module is not available with D3D12.
+
+A shader shared between APIs pins its D3D12 registers next to `[[vk::binding]]`, following VRI's mapping: constant
+and storage buffers are root descriptors at the range's `baseRegister`, other resources count from 0 per register
+class in the layout's range order, each set in its own space, push constants at `VriPushConstantDesc::baseRegister`
+in space 0. Pinning a push-constant block with `register()` also reserves a descriptor slot in Slang's SPIR-V and
+WGSL reflection, so the forward material block leaves its push constants to Slang, which places them at `b2`.
+Buffers read as `StructuredBuffer` need `VriBufferDesc::structureStride`.
 
 ## Desktop, HiDPI and XR
 

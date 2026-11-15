@@ -196,6 +196,29 @@ ASTC through WebGPU (this machine's wgpu-native adapter offers BC only), and UAS
 whose examples load no imported textures. A page loaded while the browser was hidden reported "WebApp requires a
 nonempty canvas at construction"; a reload worked.
 
+## Direct3D 12
+
+2026-11-15. `libvultra_graphics_api=d3d12` builds on Windows (`BUILD.md` has the user-facing notes):
+
+- Shaders are DXIL, profile `sm_6_6`. Only this configuration builds `slang-static` with its `dxil` config; Slang
+  loads `dxcompiler.dll` at run time, and a missing DLL is an error that names it. Adding the config changed the
+  package hash, so every configuration rebuilds `slang-static` once with the same contents.
+- VRI v0.2.1 cannot run the kernel on D3D12. The fixes are VRI pull request 36 (`fix/d3d12-backend`, 20 commits);
+  it was verified merged onto the three 0.2.2 branches above (local merge `b6d54d1`, no conflicts).
+- VRI's D3D12 register mapping was kept by the owner: root constant and storage buffers at the range's
+  `baseRegister`, table resources counted from 0 per class in range order, push constants at `b<baseRegister>`
+  in space 0. The forward shaders pin their registers to it; the material push constants are left to Slang
+  (`b2`), because an explicit `register()` on a push-constant block adds a descriptor slot to the SPIR-V and WGSL
+  reflection.
+- Verified on this machine (RTX 4090 Laptop, debug layer on): the 34 test programs pass on D3D12, Vulkan and
+  native WebGPU. The cooked SPIR-V and WGSL of `forward.slang` and `skybox.slang`, reflection included, equal
+  those of the parent commit. The `example-basics`, `example-ui` and `example-offline` captures are
+  byte-identical between the parent commit and this one on Vulkan and on WebGPU, and between D3D12 and Vulkan.
+  The probe before this integration found the forward HDR readbacks of `test-render-path`, `test-gltf-materials`
+  and `test-asset-formats` bit-identical to Vulkan in 294 of 308 frames (largest difference 2.4e-4).
+- Not covered: `xr` stays Vulkan-only; Vultra-Packages shaders do not pin D3D12 registers; no other GPU, WARP or
+  DXC version was tried.
+
 ## Local state
 
 The uncommitted shadow receiver-culling work that existed on `dev-VRI` is kept as a git stash on the original
