@@ -62,7 +62,9 @@ namespace
         cli.add_argument("--define").append().help("Preprocessor macro NAME=VALUE; may be repeated");
         cli.add_argument("--capability").append().help("Explicit Slang target capability; may be repeated");
         cli.add_argument("--link").append().help("Additional Slang link module; may be repeated");
-        cli.add_argument("--profile").default_value(std::string("spirv_1_5")).help("SPIR-V target profile or wgsl");
+        cli.add_argument("--profile")
+            .default_value(std::string("spirv_1_5"))
+            .help("SPIR-V target profile, wgsl, or a D3D12 shader model (sm_6_x)");
         cli.add_argument("--ray-query").flag().help("Enable the SPIR-V ray-query capability");
         cli.add_argument("--reflection").help("Write target layout JSON for inspection");
         const auto parsed = vultra::parseCommandLine(cli, argc, argv);
