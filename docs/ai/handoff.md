@@ -1,6 +1,6 @@
 # Handoff
 
-Dated snapshot: 2026-11-11, branch `dev-slim`. Verify claims against the code before relying on them.
+Dated snapshot: 2026-11-15, branch `dev-slim`. Verify claims against the code before relying on them.
 
 This library is the kernel of a larger restructuring whose steps are called M0 to M5. They are described, with
 their state and the steps to verify the latest one, in
@@ -40,7 +40,29 @@ Removed. The last commit that contains all of it is `dev-VRI` `f9aa0575`:
 Added:
 
 - Ten modules that are also the build features: core, platform, gpu, shader, graph, assets, render, ui, app, xr.
-- `RenderPath` and `ForwardPath` (`vultra.forward`).
+- Render stages (`StageDesc`, `RenderStage`), the concrete `RenderPath` built from a path description and stage
+  factories, `validateRenderPath()`, and `vultra.forward` as the stages `vultra.mesh` and
+  `vultra.forward_shading`; a path takes a list of views (M8 part a, 2026-11-12).
+- Graph usages `eVertexBuffer` and `eIndexBuffer` for buffers a draw reads.
+- Path inputs `scene.lights` and `camera.data` (`CameraData`), owned by `RenderPath`; `Usage::eConstantBuffer`;
+  `SceneResourceDesc::elementSize`; `PrimitiveTransform` public in `scene.hpp`; requested shader entries found in
+  linked modules (M8 part b1, 2026-11-13).
+- Native WebGPU allowed by `libvultra_graphics_api`; `ShaderPipeline` compiles WGSL for a WebGPU device. The Web
+  build of the basic examples and native WebGPU were run on 2026-11-13; compute on WebGPU needs the local VRI branch
+  `fix/webgpu-compute`. With it, `depth-pyramid` on native WebGPU matches Vulkan; its depth output is a struct member
+  because Slang turns a return value marked `SV_Depth` into a WGSL color output.
+- `xr` is built only with `libvultra_graphics_api=vulkan`, the one OpenXR graphics binding the module implements;
+  the D3D12 and Metal bindings are a later milestone, and the Web would need WebXR. `Device::defaultGraphicsAPI()`
+  and `shaderProfile()`; the builtin pack is cooked as WGSL in a WebGPU build, without the path tracer. The
+  environment radiance is uploaded as `RGBA16_SFLOAT` so WebGPU can filter it (2026-11-13).
+- M8 part b2 (2026-11-13): forward shading layouts within WebGPU limits (12 sampled textures per stage, no
+  sampler arrays, the cascade shadow code removed); the Slang module `vultra.material` and `SceneMaterials`;
+  surface layers on request (`StageBuild::requested`: `scene.normal`, `scene.albedo`, `scene.material`,
+  `scene.emission`, `scene.motion` with object motion through `GpuScene::beginFrame()`); the `display` slot after
+  the caller's passes (`RenderPath::addDisplay`, `vultra.tone_mapping`) and stage parameters; the environment's
+  textures as path inputs; the builtin pack carries the sources of `vultra.material` (`extractBuiltinPack()`);
+  RG16F readback. In Vultra-CLI, `[VultraDraw]` passes and render paths offered by package manifests; in
+  Vultra-Packages, `vultra.render` with `vultra.deferred` as pass shaders.
 - Slang user-attribute and field-initializer reflection, stored in cooked programs.
 - A render graph execution plan with batches per queue, async compute through `execute(Frame&)`, and
   `writeDot()`.
@@ -53,7 +75,7 @@ Added:
 - `--libvultra_vri_dir=<checkout>` to build VRI from a local source tree.
 - `ShaderCompileOptions::debugInfo` and `optimize`: shader debug information and SPIRV-Tools optimization per
   compile instead of per C++ build mode.
-- `LightBuffer`: the frame's lights as one storage buffer (`scene.lights`), read by `ForwardPath`.
+- `LightBuffer`: the frame's lights as one storage buffer (`scene.lights`), read by `vultra.forward_shading`.
 - Import caches made through an `AssetSource` name files relative to its root and survive moving it.
 - Errors as values: every fallible operation returns `std::expected<T, vultra::Error>`, fallible types are made by
   static `create()`, app hooks and RenderGraph pass callbacks return `std::expected<void, Error>`, and
@@ -76,6 +98,11 @@ a 1.3 device; MoltenVK reports 1.2) and 31 (Metal reports point and range timest
 Vulkan found no adapter on macOS and Metal apps failed when the profiler was created. The `vri` recipe in
 zzxzzk115/xmake-repo carries v0.2.1 since its pull request 13.
 
+`dev-slim` now needs VRI changes that are in pull requests 33 (WebGPU fixes, ETC2 and ASTC 4x4), 34 (64-bit
+atomics) and 35 (identity surface transform), the planned 0.2.2, which is not released. The v0.2.1 package no
+longer compiles the kernel, so until the release and a new pin, configure with `--libvultra_vri_dir` pointing at
+a VRI checkout that merges those branches. Do not push `dev-slim` before that, since others could not build it.
+
 ## Verification
 
 Windows 11, MSVC 2022, release, RTX 4090 Laptop (Vulkan, validation enabled), VRI built from the local checkout
@@ -83,29 +110,29 @@ with all four branches merged:
 
 - `xmake build -y --all` and `xmake lua tests/build_modules.lua` (each module builds alone).
 - Tests: render path (OpenPBR reference, material textures, live transforms, a second custom path), graph
-  resources, graph definition, graph async (graphics and compute queues, parity with the single-queue plan), graph subresources (depth
-  pyramids, array layers, cube faces, volume slices, history mips, rejected uses),
+  resources, graph definition, graph async (graphics and compute queues, parity with the single-queue plan),
+  graph subresources (depth pyramids, array layers, cube faces, volume slices, history mips, rejected uses),
   shader program (attributes, cooking, watched reload), shader compiler, file watcher, ray, asset pipeline,
   asset formats, glTF materials, debug draw, meshlets, device, device selection, window, desktop, display,
   GUI offscreen/lifetime/settings, VPK memory, image, input map.
 - `example-offline`, `example-ui` and the window tests ran for a finite number of frames.
 
-macOS 27 (Darwin 27.2), Xcode 27 SDK, Apple M2, release, the VRI v0.2.1 package: `xmake build -y --all` and every test target with `libvultra_graphics_api=vulkan` (MoltenVK from Vulkan
-SDK 1.4.309, validation enabled) and `metal`. All pass except `test-meshlets` on Vulkan (MoltenVK has no mesh
-shading); it passes on Metal. `example-basics vri` and `graph` and `example-ui` ran for a finite number of frames on both backends;
-`tests/build_modules.lua` was not run, and clang-tidy
-covered only the sources the macOS build compiles.
+macOS 27 (Darwin 27.2), Xcode 27 SDK, Apple M2, release, the VRI v0.2.1 package: `xmake build -y --all` and
+every test target with `libvultra_graphics_api=vulkan` (MoltenVK from Vulkan SDK 1.4.309, validation enabled)
+and `metal`. All pass except `test-meshlets` on Vulkan (MoltenVK has no mesh shading); it passes on Metal.
+`example-basics vri` and `graph` and `example-ui` ran for a finite number of frames on both backends;
+`tests/build_modules.lua` was not run, and clang-tidy covered only the sources the macOS build compiles.
 
 The macOS work found that ISPC 1.28.2 drops a masked `n--` in bc7e's block encoder, so every solid-color BC7
-block was wrong on every ISA; `external/bc7enc` carries a two-line patch. Windows output changes accordingly and
-was not re-verified.
+block was wrong on every ISA; `external/bc7enc` carried a two-line patch. That encoder has since been replaced
+by basisu (see WebGPU below).
 
 Android, 2026-11-12, from a Windows host: `tests/platform/` (a separate project) and `example-basics` were built
 for `x86_64` with NDK 30.0.16248370, packaged with the xmake scripts and run on the emulator (API 37); the
 commands and what they found are in BUILD.md. The `arm64-v8a` builds ran on an AYN Thor (Adreno 740,
 Android 13): the probe, `example-offline` and the three modes of `example-basics`. That found that a display
 rotated against its panel is shown turned by 90 degrees; the fix is a VRI change (identity pre-transform),
-verified on the device through `--libvultra_vri_dir` and waiting for a VRI release and a new pin.
+verified on the device through `--libvultra_vri_dir`; it is VRI pull request 35.
 
 The `xr` module gained controller input (grip and aim poses, select and squeeze per hand) and `example-xr`
 uses it. On the Meta XR Simulator the example submitted its frames with both controllers located; the buttons
@@ -116,8 +143,58 @@ not the Web probes. The interactive feel of windows, hot reload and HiDPI was no
 
 ## Known gaps
 
-See [roadmap](../roadmap.md). In short: standard scene resources beyond HDR and depth, profiling across batches, XR input on a headset and mesh LOD. Optimizing the builtin shader pack was measured
-and not adopted; the roadmap records the numbers.
+See [roadmap](../roadmap.md). In short: standard scene resources beyond HDR and depth, profiling across
+batches, XR input on a headset and mesh LOD. Optimizing the builtin shader pack was measured and not adopted;
+the roadmap records the numbers.
+
+## WebGPU
+
+Snapshot 2026-11-15. Native WebGPU runs through wgpu-native, the browser through emdawnwebgpu. The work was
+merged from the local `dev-slim-webgpu` branches into `dev-slim` here and into `main` of Vultra-CLI; it needs
+VRI pull request 33 (see VRI above), and nothing of it is pushed.
+
+- VRI pull request 33: descriptor ranges carry the storage or sampled format and
+  `VriDescriptorRange_WriteOnly`; storage clears, layer readback, float32-filterable, 3D sampling and compute
+  push constants on WebGPU; copies follow their region; the device's limits are reported (wgpu-native leaves
+  `maxColorAttachments` 0, reported as the core default of 8). `VriFormat_ETC2_RGBA8_UNORM` and
+  `VriFormat_ASTC_4x4_UNORM` are appended to the enumeration, because cooked shaders store format values; Vulkan,
+  Metal and WebGPU map them, and WebGPU requests the BC, ETC2 and ASTC features the adapter has.
+- Shaders: pass outputs are `[format("…")] WTexture2D` written with `Store`, internal and history images declare
+  `[format]` (`vultra check` reports VS003 otherwise); pass parameters have no `bool` (VS004), and a `uint` in
+  `[0, 1]` without option names is a checkbox.
+- G-buffer profiles (2026-11-15, the owner's choice): `gbufferLayers(api)` in `render_path.hpp` lists them, and
+  WGSL compiles with `VULTRA_GBUFFER_COMPACT`. The compact profile (WebGPU) fits the default 32 bytes per sample
+  with `scene.hdr`: octahedral rg16f normal, rgba8 sRGB albedo (base color times base weight, occlusion in alpha),
+  rg8 roughness and metalness, RGB9E5 emission in r32ui, rg16f motion; coat and specular color take OpenPBR's
+  defaults in a deferred path there. The full profile (the other APIs) loses no precision: rgba16 material
+  (roughness, metalness, specular weight, diffuse roughness), rgba16f emission, and `scene.coat` and
+  `scene.specular` in rgba16f, seven layers and `scene.hdr` within eight color attachments. Pass shaders declare
+  the layers with the format "standard" and the types of `vultra.gbuffer`. `scene.surface_id` and
+  `scene.surface_uv` of contract 5.26 wait for their first user in M9. The owner plans to move to a visibility
+  buffer with a thin G-buffer later, for bandwidth.
+- Texture compression, following PlayCanvas's Basis Universal approach: the importer encodes linear textures
+  whose size is a multiple of 4 as UASTC (basisu 1.16.4 replaces the bc7e encoder and ISPC); the upload
+  transcodes them to the first of ASTC 4x4, BC7, ETC2 RGBA8 and RGBA8 the device samples. Authored DDS textures
+  keep their BC format and fail to upload with an error where the device does not sample them. The local basisu
+  recipe drops `add_vectorexts("all")`, which built the xmake-repo package with `/arch:AVX512`.
+- Tests that depend on the device: `test-meshlets` checks that a device without mesh shading refuses the meshlet
+  upload; `test-render-path`'s emission check multiplies the texel the device samples, because the Intel Raptor
+  Lake iGPU decodes sRGB about 0.2% above the exact curve. Both tests are also on `dev-slim`.
+- The Web `example-offline` embeds the example pack and loads its shaders from it.
+
+Verified on Windows 11 (RTX 4090 Laptop, and its Intel Raptor Lake iGPU through
+`VK_LOADER_DRIVERS_DISABLE=*nv*`):
+
+- libvultra tests: 35 of 35 on native WebGPU, on Vulkan with the RTX 4090 and on Vulkan with the Intel iGPU.
+  On the Intel iGPU the UASTC sampling check passed with each target forced in turn (ASTC, BC7, ETC2, RGBA8).
+- Vultra-CLI 11 of 11, `vultra.render`, `lab.passes` and `vultra.lua` on native WebGPU.
+- Browser (Chromium-based, Windows): `example-basics` `window`, `vri`, `graph` and `depth-pyramid` render without
+  WebGPU errors; `example-offline`'s `linear.pfm` is byte-identical to the native WebGPU run.
+
+Not verified: Metal (the ETC2 and ASTC mapping and the Apple-family check were not compiled), Android, ETC2 or
+ASTC through WebGPU (this machine's wgpu-native adapter offers BC only), and UASTC transcoding in the browser,
+whose examples load no imported textures. A page loaded while the browser was hidden reported "WebApp requires a
+nonempty canvas at construction"; a reload worked.
 
 ## Local state
 
