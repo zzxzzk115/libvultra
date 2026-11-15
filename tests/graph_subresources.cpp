@@ -32,7 +32,7 @@ namespace
         uint32_t levels = 0;
     };
 
-    // Compute kernels over one layout: binding 0 a sampled texture, binding 1 a storage texture.
+    // Compute kernels: binding 1 a storage texture, and for the reduction binding 0 a sampled texture.
     class Kernels
     {
     public:
@@ -64,34 +64,71 @@ void main(uint3 id : SV_DispatchThreadID)
             std::ofstream(kDirectory / "volume.slang") << R"(
 struct Parameters { uint3 size; float time; };
 [[vk::push_constant]] ConstantBuffer<Parameters> parameters;
-[[vk::binding(1, 0)]] RWTexture3D<float4> target;
+[[vk::binding(1, 0)]] [format("rgba32f")] WTexture3D<float4> target;
 [shader("compute")] [numthreads(4, 4, 4)]
 void main(uint3 id : SV_DispatchThreadID)
 {
     if (all(id < parameters.size))
     {
-        target[id] = float4(id, parameters.time);
+        target.Store(id, float4(id, parameters.time));
     }
 }
 )";
-            const VriDescriptorRangeDesc ranges[2] {{0, 1, VriDescriptorType_Texture, VriShaderStage_Compute},
-                                                    {1, 1, VriDescriptorType_StorageTexture, VriShaderStage_Compute}};
-            const VriDescriptorSetDesc   set {0, ranges, 2};
-            const VriPushConstantDesc    constants {0, sizeof(Parameters), VriShaderStage_Compute};
-            VriPipelineLayoutDesc        layout {};
-            layout.descriptorSets   = &set;
-            layout.descriptorSetNum = 1;
-            layout.pushConstants    = &constants;
-            layout.pushConstantNum  = 1;
-            layout.shaderStages     = VriShaderStage_Compute;
-            must(check(device.core.CreatePipelineLayout(device.handle, &layout, &m_Layout), "Subresource layout"));
+
+            // WebGPU fixes the storage format, access and dimension in the layout, and a bind group must fill every
+            // binding of it, so each kernel has its own layout. Only the reduction reads binding 0, a depth buffer
+            // or R32F levels: a depth format makes it unfilterable float, which takes both.
+            struct Target
+            {
+                VriFormat               format;
+                VriDescriptorRangeFlags access;
+                VriTextureViewType      view;
+            };
+
+            const std::array<Target, eCount> targets {
+                Target {VriFormat_R32_SFLOAT, VriDescriptorRange_None, VriTextureViewType_2D},
+                Target {VriFormat_R32_SFLOAT, VriDescriptorRange_None, VriTextureViewType_2D},
+                Target {VriFormat_RGBA32_SFLOAT, VriDescriptorRange_WriteOnly, VriTextureViewType_3D}};
             VriDescriptorPoolDesc pool {};
-            pool.descriptorSetMaxNum  = uint32_t(m_Sets.size());
-            pool.textureMaxNum        = uint32_t(m_Sets.size());
-            pool.storageTextureMaxNum = uint32_t(m_Sets.size());
+            pool.descriptorSetMaxNum  = uint32_t(eCount * kSetsPerKernel);
+            pool.textureMaxNum        = uint32_t(kSetsPerKernel);
+            pool.storageTextureMaxNum = uint32_t(eCount * kSetsPerKernel);
             must(check(device.core.CreateDescriptorPool(device.handle, &pool, &m_Pool), "Subresource pool"));
-            must(check(device.core.AllocateDescriptorSets(m_Pool, m_Layout, 0, m_Sets.data(), uint32_t(m_Sets.size())),
-                       "Subresource sets"));
+            for (size_t kernel = 0; kernel < eCount; ++kernel)
+            {
+                const auto&                  target = targets[kernel];
+                const VriDescriptorRangeDesc ranges[2] {{0,
+                                                         1,
+                                                         VriDescriptorType_Texture,
+                                                         VriShaderStage_Compute,
+                                                         VriDescriptorRange_None,
+                                                         VriTextureViewType_2D,
+                                                         VriFormat_D32_SFLOAT},
+                                                        {1,
+                                                         1,
+                                                         VriDescriptorType_StorageTexture,
+                                                         VriShaderStage_Compute,
+                                                         target.access,
+                                                         target.view,
+                                                         target.format}};
+                const bool                   reads = kernel == eReduce;
+                const VriDescriptorSetDesc   set {0, reads ? ranges : ranges + 1, reads ? 2u : 1u};
+                const VriPushConstantDesc    constants {0, sizeof(Parameters), VriShaderStage_Compute};
+                VriPipelineLayoutDesc        layout {};
+                layout.descriptorSets   = &set;
+                layout.descriptorSetNum = 1;
+                layout.pushConstants    = &constants;
+                layout.pushConstantNum  = 1;
+                layout.shaderStages     = VriShaderStage_Compute;
+                must(check(device.core.CreatePipelineLayout(device.handle, &layout, &m_Layouts[kernel]),
+                           "Subresource layout"));
+                must(check(device.core.AllocateDescriptorSets(m_Pool,
+                                                              m_Layouts[kernel],
+                                                              0,
+                                                              m_Sets[kernel].data(),
+                                                              uint32_t(kSetsPerKernel)),
+                           "Subresource sets"));
+            }
             const std::array<std::pair<std::filesystem::path, const char*>, eCount> entries {
                 std::pair {std::filesystem::path("examples/basics/depth_pyramid.slang"), "reduce"},
                 std::pair {kDirectory / "fill.slang", "main"},
@@ -102,10 +139,10 @@ void main(uint3 id : SV_DispatchThreadID)
                     device,
                     entries[index].first,
                     std::vector<ShaderEntry> {{entries[index].second, VriShaderStage_Compute}},
-                    [this](std::span<const VriShaderDesc> shaders) -> std::expected<VriPipeline*, Error>
+                    [this, index](std::span<const VriShaderDesc> shaders) -> std::expected<VriPipeline*, Error>
                     {
                         VriPipeline*                 result = nullptr;
-                        const VriComputePipelineDesc desc {m_Layout, shaders[0], m_Device.pipelineCache};
+                        const VriComputePipelineDesc desc {m_Layouts[index], shaders[0], m_Device.pipelineCache};
                         if (auto created = check(m_Device.core.CreateComputePipeline(m_Device.handle, &desc, &result),
                                                  "Subresource pipeline");
                             !created)
@@ -125,7 +162,10 @@ void main(uint3 id : SV_DispatchThreadID)
                 pipeline.reset();
             }
             m_Device.core.DestroyDescriptorPool(m_Pool);
-            m_Device.core.DestroyPipelineLayout(m_Layout);
+            for (auto* layout : m_Layouts)
+            {
+                m_Device.core.DestroyPipelineLayout(layout);
+            }
         }
 
         Kernels(const Kernels&)            = delete;
@@ -135,10 +175,10 @@ void main(uint3 id : SV_DispatchThreadID)
         // own; call between frames.
         void beginFrame()
         {
-            m_Next = 0;
+            m_Next.fill(0);
         }
 
-        // A null source leaves binding 0 unwritten; the fill kernels do not declare it.
+        // Only the reduction reads `source`; the other kernels' layouts have no binding 0.
         std::expected<void, Error> dispatch(VriCommandBuffer*       cmd,
                                             Kernel                  kernel,
                                             VriDescriptor*          source,
@@ -146,11 +186,15 @@ void main(uint3 id : SV_DispatchThreadID)
                                             const Parameters&       parameters,
                                             std::array<uint32_t, 3> groups)
         {
-            if (m_Next == m_Sets.size())
+            if (m_Next[kernel] == kSetsPerKernel)
             {
                 return makeError("Subresource test ran out of descriptor sets");
             }
-            auto*                              set = m_Sets[m_Next++];
+            if ((kernel == eReduce) != (source != nullptr))
+            {
+                return makeError("Only the reduction kernel reads a source");
+            }
+            auto*                              set = m_Sets[kernel][m_Next[kernel]++];
             const VriDescriptor*               views[2] {source, target};
             const VriDescriptorRangeUpdateDesc updates[2] {{&views[0], 1}, {&views[1], 1}};
             if (source)
@@ -159,9 +203,9 @@ void main(uint3 id : SV_DispatchThreadID)
             }
             else
             {
-                m_Device.core.UpdateDescriptorRanges(set, 1, 1, &updates[1]);
+                m_Device.core.UpdateDescriptorRanges(set, 0, 1, &updates[1]);
             }
-            m_Device.core.CmdSetPipelineLayout(cmd, m_Layout);
+            m_Device.core.CmdSetPipelineLayout(cmd, m_Layouts[kernel]);
             m_Device.core.CmdSetPipeline(cmd, m_Pipelines[kernel]->handle());
             m_Device.core.CmdSetDescriptorSet(cmd, 0, set);
             m_Device.core.CmdSetConstants(cmd, 0, &parameters, sizeof(parameters));
@@ -171,12 +215,14 @@ void main(uint3 id : SV_DispatchThreadID)
         }
 
     private:
-        Device&                                             m_Device;
-        VriPipelineLayout*                                  m_Layout = nullptr;
-        VriDescriptorPool*                                  m_Pool   = nullptr;
-        std::array<VriDescriptorSet*, 32>                   m_Sets {};
-        std::array<std::unique_ptr<ShaderPipeline>, eCount> m_Pipelines;
-        size_t                                              m_Next = 0;
+        static constexpr size_t kSetsPerKernel = 32;
+
+        Device&                                                           m_Device;
+        std::array<VriPipelineLayout*, eCount>                            m_Layouts {};
+        VriDescriptorPool*                                                m_Pool = nullptr;
+        std::array<std::array<VriDescriptorSet*, kSetsPerKernel>, eCount> m_Sets {};
+        std::array<std::unique_ptr<ShaderPipeline>, eCount>               m_Pipelines;
+        std::array<size_t, eCount>                                        m_Next {};
     };
 
     Extent levelSize(Extent size, uint32_t mip)

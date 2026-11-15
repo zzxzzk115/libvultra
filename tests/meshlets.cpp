@@ -109,18 +109,17 @@ namespace
         }
     }
 
-    void verifyUpload(const vultra::SceneData& scene)
+    void verifyUpload(vultra::Device& device, const vultra::SceneData& scene)
     {
-        const auto device = must(vultra::Device::create(true, nullptr, VriFeature_MeshShader));
         {
             vultra::SceneData emptyScene;
             emptyScene.materials.emplace_back();
-            const auto emptyGpu = must(vultra::GpuScene::create(*device, emptyScene, true));
+            const auto emptyGpu = must(vultra::GpuScene::create(device, emptyScene, true));
             require(emptyGpu->meshlets && emptyGpu->meshlets->count == 0,
                     "Empty meshlet scene did not retain valid bindings");
         }
         const auto  expected = must(vultra::buildMeshlets(scene, 4));
-        const auto  gpuScene = must(vultra::GpuScene::create(*device, scene, true, 4));
+        const auto  gpuScene = must(vultra::GpuScene::create(device, scene, true, 4));
         const auto& gpu      = *gpuScene;
         require(gpu.meshlets && gpu.meshlets->count == expected.meshlets.size(), "GPU meshlet count differs");
         require(std::ranges::none_of(gpu.meshlets->views,
@@ -137,13 +136,35 @@ namespace
                     "GPU meshlet primitive ranges differ from the built data");
         }
     }
+
+    // Without mesh shaders a scene must refuse meshlets instead of uploading buffers no pipeline can read.
+    void verifyUploadRefused(const vultra::SceneData& scene)
+    {
+        const auto device = must(vultra::Device::create(true));
+        require(!device->features().meshShading, "A device without the mesh shader feature reports mesh shading");
+        const auto gpuScene = vultra::GpuScene::create(*device, scene, true, 4);
+        require(!gpuScene, "Meshlet upload succeeded on a device without mesh shading");
+        must(vultra::GpuScene::create(*device, scene));
+    }
 } // namespace
 
 int main()
 {
     const auto scene = makeScene();
     verifyClusters(scene);
-    verifyUpload(scene);
+    // WebGPU has no mesh shaders; on Vulkan and Metal they depend on the GPU, such as an Intel Raptor Lake iGPU.
+    const auto meshDevice = vultra::Device::create(true, nullptr, VriFeature_MeshShader);
+    require(!meshDevice || vultra::Device::defaultGraphicsAPI() != VriGraphicsAPI_WebGPU,
+            "WebGPU created a device with mesh shading");
+    if (!meshDevice)
+    {
+        std::cout << "No mesh-shading device: " << meshDevice.error().message << "\n";
+        verifyUploadRefused(scene);
+        std::cout << "Meshlet tests passed: triangle/material preservation, bounds, vtask determinism, partial task "
+                     "groups, upload refused without mesh shading\n";
+        return 0;
+    }
+    verifyUpload(**meshDevice, scene);
     std::cout << "Meshlet tests passed: triangle/material preservation, bounds, vtask determinism, partial task "
                  "groups, GPU upload ranges\n";
     return 0;

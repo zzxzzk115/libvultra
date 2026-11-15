@@ -31,20 +31,27 @@ namespace
             const auto file = directory / "graph_async.slang";
             std::ofstream(file) << R"(
 [[vk::binding(0, 0)]] Texture2D<float4>   source;
-[[vk::binding(1, 0)]] RWTexture2D<float4> result;
+[[vk::binding(1, 0)]] [format("rgba16f")] WTexture2D<float4> result;
 [shader("compute")] [numthreads(8, 8, 1)]
 void fill(uint3 id : SV_DispatchThreadID)
 {
-    result[id.xy] = float4(id.x / 15.0, id.y / 15.0, 0.25, 1);
+    result.Store(id.xy, float4(id.x / 15.0, id.y / 15.0, 0.25, 1));
 }
 [shader("compute")] [numthreads(8, 8, 1)]
 void invert(uint3 id : SV_DispatchThreadID)
 {
-    result[id.xy] = float4(1 - source[id.xy].rgb, 1);
+    result.Store(id.xy, float4(1 - source[id.xy].rgb, 1));
 }
 )";
+            // WebGPU binds RGBA16F storage only write-only, with the format in the layout.
             const VriDescriptorRangeDesc ranges[2] {{0, 1, VriDescriptorType_Texture, VriShaderStage_Compute},
-                                                    {1, 1, VriDescriptorType_StorageTexture, VriShaderStage_Compute}};
+                                                    {1,
+                                                     1,
+                                                     VriDescriptorType_StorageTexture,
+                                                     VriShaderStage_Compute,
+                                                     VriDescriptorRange_WriteOnly,
+                                                     VriTextureViewType_2D,
+                                                     VriFormat_RGBA16_SFLOAT}};
             const VriDescriptorSetDesc   set {0, ranges, 2};
             VriPipelineLayoutDesc        layout {};
             layout.descriptorSets   = &set;

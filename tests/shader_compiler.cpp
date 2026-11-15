@@ -174,6 +174,8 @@ void main(uint3 index : SV_DispatchThreadID)
     const auto include = root / "late/value.slangh";
     writeText(include, "static const uint factor = 3;\n");
     ShaderCompileOptions options;
+    // The probe runs the program on this build's device, so it is compiled for that device.
+    options.profile            = vultra::shaderProfile(vultra::Device::defaultGraphicsAPI());
     options.entries            = {{"main", VriShaderStage_Compute}};
     options.includeDirectories = {root / "early", root / "late"};
     options.linkSources        = {{"choices", "export static const uint choice = 5;"}};

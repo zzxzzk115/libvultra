@@ -50,6 +50,22 @@ namespace
         return {};
     }
 
+    // The value this device samples from a constant texture. Hardware sRGB decoding may differ slightly from the
+    // exact curve: an Intel Raptor Lake GPU returns about 0.2% more.
+    glm::vec3 sampledTexel(vultra::Device& device, vultra::Texture& source)
+    {
+        using namespace vultra;
+        auto       target = must(Texture::create(device, colorTexture({1, 1}, VriFormat_RGBA32_SFLOAT)));
+        const auto blit   = must(TextureBlit::create(device, target.desc.format));
+        const auto frame  = must(Frame::create(device));
+        must(blit->setSource(0, source));
+        auto* cmd = must(frame->begin());
+        must(blit->draw(cmd, target, {0, 0, 1, 1}));
+        must(frame->submitAndWait());
+        const auto image = must(readback(device, target));
+        return {image.rgba[0], image.rgba[1], image.rgba[2]};
+    }
+
     void aovMapping(vultra::Device& device)
     {
         using namespace vultra;
@@ -847,6 +863,14 @@ namespace
                             "Normal mapping lost tangent orientation, handedness or normal scale");
                 }
             }
+            // The emission texel (64, 128, 192) is sampled as sRGB, within this device's decoding precision.
+            const auto texel = sampledTexel(device, *gpu.materialTextures.at(0)[4]);
+            const auto exact = glm::vec3(0.05126946f, 0.2158605f, 0.5271151f);
+            for (uint32_t channel = 0; channel < 3; ++channel)
+            {
+                require(std::abs(texel[channel] - exact[channel]) < 0.0015f,
+                        "The emission texture is not decoded from sRGB");
+            }
             // No light or IBL: the HDR result must be linear emission, without exposure/tone mapping.
             for (uint32_t debug : {0u, 5u})
             {
@@ -855,8 +879,7 @@ namespace
                 {
                     gpu.materials[0].emissionLuminance = strength;
                     const auto image                   = render(device, renderer, graph, outputs, camera);
-                    const auto expected =
-                        glm::vec3(0.05126946f, 0.2158605f, 0.5271151f) * scene.materials[0].emissionColor * strength;
+                    const auto expected                = texel * scene.materials[0].emissionColor * strength;
                     for (uint32_t channel = 0; channel < 3; ++channel)
                     {
                         require(std::abs(image.rgba[center + channel] - expected[channel]) < 0.002f,

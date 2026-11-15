@@ -503,9 +503,14 @@ void callableMain(inout Payload payload)
     support::rejects(invalidWgsl.save(wgslFile), kRejected);
     wgslOptions.rayQuery = true;
     support::rejects(ShaderProgram::compile(source, wgslOptions), kRejected);
-    bool builderCalled = false;
+    // The GPU half runs the cook this build's device consumes; the other target must stop before the builder.
+    const bool           deviceWgsl = shaderProfile(Device::defaultGraphicsAPI()) == "wgsl";
+    const ShaderProgram& mismatched = deviceWgsl ? restored : wgslRestored;
+    must((deviceWgsl ? wgsl : program).save(cooked));
+    const auto deviceCook    = readBytes(cooked);
+    bool       builderCalled = false;
     support::rejects(ShaderPipeline::create(*device,
-                                            wgslRestored,
+                                            mismatched,
                                             {entries.begin(), entries.end()},
                                             [&](auto) -> std::expected<VriPipeline*, Error>
                                             {
@@ -545,7 +550,7 @@ void callableMain(inout Payload payload)
     require(must(compare(baseline, render(*shipped))).mse == 0, "Source and source-free cooked GPU pixels differ");
     const auto handle     = shipped->pipeline->handle();
     const auto generation = shipped->pipeline->generation();
-    auto       corrupt    = original;
+    auto       corrupt    = deviceCook;
     corrupt.back() ^= 1;
     must(writeFileAtomically(cooked, std::as_bytes(std::span(corrupt))));
     require(!shipped->pipeline->reload() && shipped->pipeline->handle() == handle &&
@@ -554,7 +559,7 @@ void callableMain(inout Payload payload)
     require(shipped->pipeline->diagnostics().find("checksum") != std::string::npos &&
                 must(compare(baseline, render(*shipped))).mse == 0,
             "Cooked failure lost diagnostics or changed image");
-    must(writeFileAtomically(cooked, std::as_bytes(std::span(original))));
+    must(writeFileAtomically(cooked, std::as_bytes(std::span(deviceCook))));
     require(shipped->pipeline->reload() && shipped->pipeline->generation() == generation + 1 &&
                 must(compare(baseline, render(*shipped))).mse == 0,
             "Cooked replacement recovery failed");
