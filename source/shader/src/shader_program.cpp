@@ -45,6 +45,11 @@ namespace vultra
         }
     } // namespace
 
+    std::string shaderProfile(VriGraphicsAPI api)
+    {
+        return api == VriGraphicsAPI_WebGPU ? "wgsl" : "spirv_1_5";
+    }
+
     std::expected<void, Error> detail::validateShaderProgram(const ShaderProgram& program, const VriDeviceDesc& device)
     {
         // VRI's Metal and GL backends consume SPIR-V through their own SPIRV-Cross path.

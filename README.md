@@ -57,8 +57,10 @@ Examples accept `--frames`, `--log-level` and `--log-file`; windowed ones also a
 - This branch is verified on Windows x64 with Vulkan and on macOS arm64 with Vulkan (MoltenVK) and Metal, the
   latter by the test suite only. On Android the platform probe and `example-basics` were built for `x86_64` and
   run on the emulator, and for `arm64-v8a` on one physical device, where a rotated display is shown turned
-  until the VRI fix is released ([BUILD.md](BUILD.md#android-and-web)). Linux
-  and Web (WebGL2/WebGPU) code paths exist but were not rebuilt after the module restructuring. XR ran on the
+  until the VRI fix is released ([BUILD.md](BUILD.md#android-and-web)). The WebGPU Web build of the basic
+  examples ran in a Chromium-based browser and native WebGPU on Windows; compute work on WebGPU needs VRI fixes
+  that are not released yet. Linux and WebGL2 code paths exist but were not rebuilt after the module
+  restructuring. XR ran on the
   Meta XR Simulator only, not on a headset ([BUILD.md](BUILD.md#desktop-hidpi-and-xr)).
 - SDL3 is the only desktop window backend.
 - `vultra.forward` renders static geometry with an opaque OpenPBR material subset, analytic lights and

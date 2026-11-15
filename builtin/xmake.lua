@@ -17,6 +17,10 @@ target("vultra-builtin-pack")
                                  os.files(path.join(library_root, "build", "sdk", "**")),
                                  {pack:targetfile()})
         table.sort(files)
+        -- Configurations of one checkout share the embedded archive; its shaders are compiled for one graphics
+        -- API, recorded next to it, so a build for another API cooks it again.
+        local api = get_config("libvultra_graphics_api")
+        local stamp = output .. ".api"
         depend.on_changed(function ()
             local candidate = output .. ".new"
             os.mkdir(path.directory(output))
@@ -31,8 +35,9 @@ target("vultra-builtin-pack")
             else
                 os.tryrm(candidate)
             end
+            io.writefile(stamp, api)
         end, {dependfile = target:dependfile(output), files = files,
-              values = {get_config("plat"), get_config("arch"), get_config("mode")},
-              changed = not os.isfile(output)})
+              values = {get_config("plat"), get_config("arch"), get_config("mode"), api},
+              changed = not os.isfile(output) or not os.isfile(stamp) or io.readfile(stamp) ~= api})
     end)
 target_end()

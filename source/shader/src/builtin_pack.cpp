@@ -1,6 +1,7 @@
 #include <vultra/assets/vpk_archive.hpp>
 #include <vultra/core/base/logger.hpp>
 #include <vultra/core/base/stable_id.hpp>
+#include <vultra/gpu/device.hpp>
 #include <vultra/shader/builtin_pack.hpp>
 #include <vultra/shader/shader_program.hpp>
 
@@ -145,11 +146,22 @@ namespace vultra
         {
             return makeError("No built-in shader passes to cook");
         }
+        // The pack is cooked for the backend of this build. WGSL has no ray queries, so a WebGPU pack has no
+        // path tracer.
+        ShaderCompileOptions options;
+        options.includeDirectories.assign(includes.begin(), includes.end());
+        options.profile = shaderProfile(Device::defaultGraphicsAPI());
         std::vector<VpkFile> files;
         for (const auto& source : sources)
         {
-            Logger::core().info("Cooking built-in shader {}", source.filename().string());
-            const auto program = ShaderProgram::compile(source, {}, includes, source.filename() == "path_trace.slang");
+            options.rayQuery = source.filename() == "path_trace.slang";
+            if (options.rayQuery && options.profile == "wgsl")
+            {
+                Logger::core().info("Leaving out {}: WGSL has no ray queries", source.filename().string());
+                continue;
+            }
+            Logger::core().info("Cooking built-in shader {} ({})", source.filename().string(), options.profile);
+            const auto program = ShaderProgram::compile(source, options);
             if (!program)
             {
                 return std::unexpected(program.error());

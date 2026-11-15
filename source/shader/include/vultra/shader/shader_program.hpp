@@ -148,6 +148,9 @@ namespace vultra
         bool optimize = false;
     };
 
+    // The compile profile a device of `api` consumes: WGSL for WebGPU, SPIR-V otherwise.
+    std::string shaderProfile(VriGraphicsAPI api);
+
     struct ShaderDependency
     {
         std::filesystem::path path;

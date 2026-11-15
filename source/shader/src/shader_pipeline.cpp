@@ -83,6 +83,11 @@ namespace vultra
         {
             return makeError("Shader entry points cannot be empty");
         }
+        // The device decides what is compiled: its WebGPU backend consumes WGSL, every other backend SPIR-V.
+        if (device.core.GetDeviceDesc(device.handle)->graphicsAPI == VriGraphicsAPI_WebGPU)
+        {
+            options.profile = "wgsl";
+        }
         auto resolved = source ? source->resolve(file) : detail::absolutePath(file);
         if (!resolved)
         {

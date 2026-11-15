@@ -155,7 +155,12 @@ namespace vultra
     std::expected<std::unique_ptr<Device>, Error>
     Device::create(bool validation, const void* nativeCreateInfo, uint64_t features, bool bestEffort)
     {
-        return create(VULTRA_GRAPHICS_API, validation, nativeCreateInfo, features, bestEffort);
+        return create(defaultGraphicsAPI(), validation, nativeCreateInfo, features, bestEffort);
+    }
+
+    VriGraphicsAPI Device::defaultGraphicsAPI()
+    {
+        return VULTRA_GRAPHICS_API;
     }
 
     std::expected<std::unique_ptr<Device>, Error> Device::create(VriGraphicsAPI api,

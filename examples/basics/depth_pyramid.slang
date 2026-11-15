@@ -31,9 +31,15 @@ FullscreenOutput fullscreen(uint vertex : SV_VertexID)
     return output;
 }
 
+// Slang's WGSL output maps SV_Depth on a struct member to frag_depth, but on a return value to a color location.
+struct SceneOutput
+{
+    float depth : SV_Depth;
+};
+
 // Depth of a few spheres moving in front of a far plane.
 [shader("fragment")]
-float scene(FullscreenOutput input) : SV_Depth
+SceneOutput scene(FullscreenOutput input)
 {
     float depth = 0.95;
     for (uint index = 0; index < 4; ++index)
@@ -47,7 +53,9 @@ float scene(FullscreenOutput input) : SV_Depth
             depth = min(depth, 0.2 + 0.15 * float(index) + 0.1 * extent * extent);
         }
     }
-    return depth;
+    SceneOutput output;
+    output.depth = depth;
+    return output;
 }
 
 [shader("compute")]

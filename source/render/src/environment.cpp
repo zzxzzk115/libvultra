@@ -4,6 +4,7 @@
 #include <vultra/shader/shader_pipeline.hpp>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/packing.hpp>
 
 #define STB_IMAGE_STATIC
 #define STB_IMAGE_IMPLEMENTATION
@@ -83,6 +84,24 @@ namespace vultra
             std::memcpy(result.bytes.data(), pixels.data(), result.bytes.size());
             return result;
         }
+
+        // The radiance map is sampled with filtering, which WebGPU allows for 16-bit but not 32-bit floats.
+        // Radiance above the largest half float is clamped to it.
+        TextureLevel halfFloatLevel(const TextureLevel& level)
+        {
+            const size_t count = level.bytes.size() / sizeof(glm::vec4);
+            TextureLevel result;
+            result.size = level.size;
+            result.bytes.resize(count * sizeof(uint64_t));
+            for (size_t i = 0; i < count; ++i)
+            {
+                glm::vec4 value;
+                std::memcpy(&value, level.bytes.data() + i * sizeof(glm::vec4), sizeof(value));
+                const uint64_t packed = glm::packHalf4x16(glm::clamp(value, glm::vec4(-65504), glm::vec4(65504)));
+                std::memcpy(result.bytes.data() + i * sizeof(uint64_t), &packed, sizeof(packed));
+            }
+            return result;
+        }
     } // namespace
 
     Environment::Environment(Device&                      device,
@@ -118,8 +137,8 @@ namespace vultra
             return std::unexpected(pixels.error());
         }
         TextureData sourceData;
-        sourceData.format = TextureFormat::eRgba32Sfloat;
-        sourceData.levels.push_back(std::move(*pixels));
+        sourceData.format = TextureFormat::eRgba16Sfloat;
+        sourceData.levels.push_back(halfFloatLevel(*pixels));
         auto uploaded = uploadTextureAsset(device, sourceData);
         if (!uploaded)
         {

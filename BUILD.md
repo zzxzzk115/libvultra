@@ -47,8 +47,8 @@ A root build defaults to all modules, all examples and the tests. Configuration 
 | `libvultra_features` | Comma-separated modules: `core`, `platform`, `gpu`, `shader`, `graph`, `assets`, `render`, `ui`, `app`, `xr`, or `all`. Dependencies are added automatically. Root default `all`, embedded default `gpu`. |
 | `libvultra_shader_compiler` | Default on. `n` keeps only the cooked shader runtime: no Slang, no shader hot reload. |
 | `libvultra_asset_import` | Default on. `n` keeps asset values and VPK archives without importers or meshlet building. |
-| `libvultra_with_openxr` | Default on. `n` leaves `xr` out of `all`; selecting `xr` explicitly requires it. |
-| `libvultra_graphics_api` | `metal` (default on macOS) or `vulkan` there; `vulkan` on other native platforms; WebAssembly requires `webgpu` or `webgl2`. |
+| `libvultra_with_openxr` | Default on. `n` leaves `xr` out of `all`; selecting `xr` explicitly requires it. `xr` also requires `libvultra_graphics_api=vulkan`: it implements only the OpenXR Vulkan binding, so other APIs leave it out of `all`. |
+| `libvultra_graphics_api` | `metal` (default on macOS) or `vulkan` there; `vulkan` (default) or `webgpu` on other native platforms, the latter through wgpu-native from the `webgpu-sdk` package; WebAssembly requires `webgpu` or `webgl2`. |
 | `libvultra_vri_dir` | Build VRI from a local checkout instead of the pinned release. |
 | `libvultra_build_examples`, `libvultra_build_tests` | Default on at the root, off when embedded. |
 | `libvultra_examples` | `all`, a group (`basics`, `offline`, `ui`), a mode (`basics.vri`) or a comma-separated union. |
@@ -160,8 +160,9 @@ VULTRA_WINDOW_SYSTEM=x11 xmake run example-ui --frames 60
 
 The Linux file dialog uses the `xdg-desktop-portal` backend of Native File Dialog Extended.
 
-The `xr` module needs an active OpenXR runtime. An `XRFrame` carries both eye views and, per hand, the grip
-and aim poses with the select and squeeze values; bindings are suggested for the Khronos simple controller and
+The `xr` module needs an active OpenXR runtime and the Vulkan backend: it implements only the OpenXR Vulkan
+binding (`XR_KHR_vulkan_enable2`). OpenXR has no WebGPU binding, and WebXR is not implemented.
+An `XRFrame` carries both eye views and, per hand, the grip and aim poses with the select and squeeze values; bindings are suggested for the Khronos simple controller and
 the Oculus Touch controller. [example-xr](examples/xr/main.cpp) draws a floor, a car, both hands and a pointer
 beam per controller for each eye. It has no window: after `--frames` rendered frames it asks the runtime
 to end the session with `OpenXRSession::requestExit()` and keeps its frame loop until the session has stopped;
@@ -183,8 +184,8 @@ is destroyed, and every space the module creates is destroyed successfully.
 
 ## Android and Web
 
-The Android commands below and the platform probe at the end of this section were run; the Web commands were
-not rebuilt on this branch after the module restructuring, so treat those as a starting point. `PlatformApp`
+The Android commands below, the WebGPU Web commands and the platform probe at the end of this section were run;
+the WebGL2 variant of the Web build was not. `PlatformApp`
 resolves to `AndroidApp` (GameActivity) or `WebApp` on these platforms, and
 [examples/common/entry.cpp](examples/common/entry.cpp) shows the `android_main` and `main` entries. Only the
 `example-basics` modes `window`, `vri` and `graph` and `example-offline` have platform entries. Shaders are
@@ -220,10 +221,11 @@ plugin 9.5.1 and compiles against API 37. Start a mode with
 with the newest build tools installed in the SDK, and builds nothing itself; `--application-id` and `--manifest` select another application, such as the offline example
 with [its manifest](examples/offline/android_manifest.xml).
 
-Web, after activating Emscripten (`webgl2` consumes the SPIR-V pack, `webgpu` the WGSL pack):
+Web, with an [emsdk](https://github.com/emscripten-core/emsdk) checkout installed and activated (`emsdk install
+latest`, `emsdk activate latest`) and named by `--emsdk`; `webgl2` consumes the SPIR-V pack, `webgpu` the WGSL pack:
 
 ```sh
-XMAKE_CONFIGDIR="$OUT/web-config" xmake f -y -p wasm -a wasm32 -m release -o "$OUT/web" \
+XMAKE_CONFIGDIR="$OUT/web-config" xmake f -y -p wasm -a wasm32 -m release -o "$OUT/web" --emsdk="$EMSDK" \
     --libvultra_graphics_api=webgpu --libvultra_features=app \
     --libvultra_examples=basics.window,basics.vri,basics.graph --libvultra_example_pack="$OUT/pack-wgsl/project.vpk" \
     --libvultra_shader_compiler=n --libvultra_asset_import=n \
@@ -231,7 +233,13 @@ XMAKE_CONFIGDIR="$OUT/web-config" xmake f -y -p wasm -a wasm32 -m release -o "$O
 XMAKE_CONFIGDIR="$OUT/web-config" xmake build -y example-basics
 ```
 
-Serve the generated `.html`, `.js` and `.wasm` together over HTTP and pass the mode as `?arg=<mode>`.
+Serve the generated `.html`, `.js` and `.wasm` together over HTTP and pass the mode as `?arg=<mode>`. With the
+WebGPU build, `window`, `vri` and `graph` were verified in a Chromium-based browser on Windows.
+
+Native WebGPU builds the same examples with `--libvultra_graphics_api=webgpu` on a desktop platform; shaders compiled
+at run time then target WGSL. Compute passes with push constants, and storage images in any format but rgba8, need
+WebGPU fixes in VRI that are not in a VRI release yet. A fragment shader writes `SV_Depth` on a member of its
+output struct: Slang 2026.11 compiles a return value marked `SV_Depth` to a WGSL color output, not `frag_depth`.
 
 [tests/platform](tests/platform/xmake.lua) is a separate xmake project with finite offscreen probes
 (`platform-pack` on the host, then `platform-render`, `platform-vpk-memory` and `platform-shader-runtime` with

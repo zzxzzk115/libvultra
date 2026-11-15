@@ -25,7 +25,7 @@ option_end()
 option("libvultra_graphics_api")
     set_values("vulkan", "metal", "webgpu", "webgl2")
     set_showmenu(true)
-    set_description("VRI backend: Metal (default) or Vulkan on macOS, Vulkan on other native platforms, WebGPU or WebGL2 on WebAssembly")
+    set_description("VRI backend: Metal (default) or Vulkan on macOS, Vulkan on other native platforms, WebGPU (wgpu-native) on desktop, WebGPU or WebGL2 on WebAssembly")
     -- The default depends on the platform, which a description-scope default cannot see. Metal needs nothing
     -- installed on macOS; Vulkan there needs the LunarG SDK on every machine that runs the program.
     after_check(function (option)
@@ -34,7 +34,7 @@ option("libvultra_graphics_api")
         end
         local api = option:value()
         assert((is_plat("wasm") and (api == "webgpu" or api == "webgl2")) or
-               (not is_plat("wasm") and api == "vulkan") or (is_plat("macosx") and api == "metal"),
+               (not is_plat("wasm") and (api == "vulkan" or api == "webgpu")) or (is_plat("macosx") and api == "metal"),
                "Unsupported Vultra platform/graphics API selection")
     end)
 option_end()

@@ -57,6 +57,8 @@ namespace vultra
                const void*    nativeCreateInfo = nullptr,
                uint64_t       features         = 0,
                bool           bestEffort       = false);
+        // The backend this build selects (libvultra_graphics_api), which create() without an API uses.
+        static VriGraphicsAPI defaultGraphicsAPI();
         ~Device();
         Device(const Device&)                                             = delete;
         Device&                                  operator=(const Device&) = delete;
