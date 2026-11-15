@@ -110,8 +110,12 @@ namespace vultra
         uint32_t            columns      = 0;
         bool                columnMajor  = true;
         // Compiler reflection is normalized to VRI before it enters a cooked artifact.
-        std::optional<VriDescriptorType>   descriptorType;
-        VriTextureViewType                 viewType = VriTextureViewType_2D;
+        std::optional<VriDescriptorType> descriptorType;
+        VriTextureViewType               viewType = VriTextureViewType_2D;
+        // A storage texture: the format its [format] attribute declares (Unknown without one), and whether the
+        // shader only writes it (WTexture2D). WebGPU bakes both into the binding.
+        VriFormat                          storageFormat = VriFormat_Unknown;
+        bool                               writeOnly     = false;
         std::vector<ShaderParameterOffset> offsets;
         std::vector<ShaderParameter>       fields;
         std::vector<ShaderAttribute>       attributes;
@@ -167,6 +171,9 @@ namespace vultra
         uint64_t           uniformSize  = 0;
         VriTextureViewType viewType     = VriTextureViewType_2D;
         bool               pushConstant = false;
+        // Storage textures: the format the shader declares and whether it only writes them.
+        VriFormat storageFormat = VriFormat_Unknown;
+        bool      writeOnly     = false;
     };
 
     // Owns one target's code, layout and entry names; descriptor views expire when this program changes.
@@ -184,10 +191,10 @@ namespace vultra
 #ifdef VULTRA_WITH_SHADER_COMPILER
         // Empty entries discovers all annotated shader entries.
         [[nodiscard]] static std::expected<ShaderProgram, Error>
-        compile(const std::filesystem::path&           file,
-                std::span<const ShaderEntry>           entries  = {},
-                std::span<const std::filesystem::path> includes = {},
-                bool                                   rayQuery = false);
+                                                                 compile(const std::filesystem::path&           file,
+                                                                         std::span<const ShaderEntry>           entries = {},
+                                                                         std::span<const std::filesystem::path> includes = {},
+                                                                         bool                                   rayQuery = false);
         [[nodiscard]] static std::expected<ShaderProgram, Error> compile(const std::filesystem::path& file,
                                                                          const ShaderCompileOptions&  options);
         [[nodiscard]] static std::expected<ShaderProgram, Error>

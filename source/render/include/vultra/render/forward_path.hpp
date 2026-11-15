@@ -77,6 +77,8 @@ namespace vultra
         explicit ForwardShadingStage(Device& device);
         std::expected<void, Error> bindScene(StageBuild& build, Buffer& instances);
         void                       releaseScene();
+        // The forward pipelines and the sky of one set: scene.hdr only, or the G-buffer layers too.
+        std::expected<void, Error> createPipelines(bool gbuffer);
 
         Device&                  m_Device;
         GpuScene*                m_Scene       = nullptr;
@@ -84,6 +86,8 @@ namespace vultra
         std::unique_ptr<Texture> m_OpenPbrLuts;
         VriDescriptor*           m_EnvironmentSampler = nullptr;
         VriPipelineLayout*       m_Layout             = nullptr;
+        VriPipelineLayout*       m_SkyLayout          = nullptr; // Set 0 only.
+        const AssetSource*       m_Shaders            = nullptr; // Cooked builtin shaders, or null.
         std::vector<View>        m_Views; // Kept across graphs; a graph uses the first views.size().
         // Per-scene state, rebuilt by addPasses() for view 0.
         bool                            m_GBuffer       = false; // Whether this graph writes the G-buffer layers.
@@ -98,7 +102,7 @@ namespace vultra
             std::unique_ptr<ShaderPipeline>                skybox;
         };
 
-        // Writing scene.hdr only (0), or the G-buffer layers too (1).
+        // Writing scene.hdr only (0), or the G-buffer layers too (1), created when a graph first reads them.
         std::array<Pipelines, 2> m_Pipelines;
     };
 } // namespace vultra

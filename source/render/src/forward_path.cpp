@@ -300,9 +300,30 @@ namespace vultra
         {
             return std::unexpected(created.error());
         }
+        // The sky reads only the frame, and WebGPU draws only with every set of the layout bound.
+        VriPipelineLayoutDesc skyLayout {};
+        skyLayout.descriptorSets   = sets;
+        skyLayout.descriptorSetNum = 1;
+        skyLayout.shaderStages     = kFrameStages;
+        if (auto created = check(device.core.CreatePipelineLayout(device.handle, &skyLayout, &stage->m_SkyLayout),
+                                 "Create sky layout");
+            !created)
+        {
+            return std::unexpected(created.error());
+        }
 
-        auto*      self     = stage.get();
-        const auto pipeline = [&](const char* file, bool mesh, bool doubleSided, bool mirrored, bool gbuffer)
+        stage->m_Shaders = shaders;
+        if (auto created = stage->createPipelines(false); !created)
+        {
+            return std::unexpected(created.error());
+        }
+        return stage;
+    }
+
+    std::expected<void, Error> ForwardShadingStage::createPipelines(bool gbuffer)
+    {
+        auto&      pipelines = m_Pipelines[gbuffer ? 1 : 0];
+        const auto pipeline  = [this, gbuffer](const char* file, bool mesh, bool doubleSided, bool mirrored)
         {
             const char* vertex = "screenVertex";
             if (mesh)
@@ -310,14 +331,14 @@ namespace vultra
                 vertex = gbuffer ? "vertexGBuffer" : "vertexMain";
             }
             return ShaderPipeline::create(
-                device,
+                m_Device,
                 std::filesystem::path("builtin/shaders/passes") / file,
                 std::vector<ShaderEntry> {{vertex, VriShaderStage_Vertex},
                                           {gbuffer ? "fragmentGBuffer" : "fragmentMain", VriShaderStage_Fragment}},
-                [self, mesh, doubleSided, mirrored, gbuffer](std::span<const VriShaderDesc> stageShaders)
+                [this, mesh, doubleSided, mirrored, gbuffer](std::span<const VriShaderDesc> stageShaders)
                 {
-                    return createPipeline(self->m_Device,
-                                          self->m_Layout,
+                    return createPipeline(m_Device,
+                                          mesh ? m_Layout : m_SkyLayout,
                                           stageShaders,
                                           mesh,
                                           doubleSided,
@@ -326,28 +347,24 @@ namespace vultra
                 },
                 "builtin/shaders",
                 std::vector<std::filesystem::path> {"builtin/shaders", "external"},
-                shaders);
+                m_Shaders);
         };
-        for (const bool gbuffer : {false, true})
+        for (uint32_t variant = 0; variant < pipelines.forward.size(); ++variant)
         {
-            auto& pipelines = stage->m_Pipelines[gbuffer ? 1 : 0];
-            for (uint32_t variant = 0; variant < pipelines.forward.size(); ++variant)
+            auto forward = pipeline("forward.slang", true, (variant & 1) != 0, (variant & 2) != 0);
+            if (!forward)
             {
-                auto forward = pipeline("forward.slang", true, (variant & 1) != 0, (variant & 2) != 0, gbuffer);
-                if (!forward)
-                {
-                    return std::unexpected(forward.error());
-                }
-                pipelines.forward[variant] = std::move(*forward);
+                return std::unexpected(forward.error());
             }
-            auto skybox = pipeline("skybox.slang", false, true, false, gbuffer);
-            if (!skybox)
-            {
-                return std::unexpected(skybox.error());
-            }
-            pipelines.skybox = std::move(*skybox);
+            pipelines.forward[variant] = std::move(*forward);
         }
-        return stage;
+        auto skybox = pipeline("skybox.slang", false, true, false);
+        if (!skybox)
+        {
+            return std::unexpected(skybox.error());
+        }
+        pipelines.skybox = std::move(*skybox);
+        return {};
     }
 
     ForwardShadingStage::~ForwardShadingStage()
@@ -379,6 +396,11 @@ namespace vultra
         {
             m_Device.core.DestroyPipelineLayout(m_Layout);
             m_Layout = nullptr;
+        }
+        if (m_SkyLayout)
+        {
+            m_Device.core.DestroyPipelineLayout(m_SkyLayout);
+            m_SkyLayout = nullptr;
         }
     }
 
@@ -539,6 +561,14 @@ namespace vultra
                                     {
                                         return build.requests(target.name);
                                     });
+            // The G-buffer pipelines exceed some devices' color attachment limits, so they exist only when used.
+            if (m_GBuffer && !m_Pipelines[1].skybox)
+            {
+                if (auto created = createPipelines(true); !created)
+                {
+                    return fail(created.error());
+                }
+            }
         }
         const auto                         size = build.views[*build.view].size;
         const auto                         used = std::span(kTargets).first(m_GBuffer ? kTargets.size() : 1);
@@ -600,7 +630,7 @@ namespace vultra
                 }
                 const auto& target = resources.getTexture(targets.front());
                 beginTargets(m_Device, cmd, *views, nullptr, {target.desc.width, target.desc.height}, true);
-                m_Device.core.CmdSetPipelineLayout(cmd, m_Layout);
+                m_Device.core.CmdSetPipelineLayout(cmd, m_SkyLayout);
                 m_Device.core.CmdSetPipeline(cmd, pipelines->skybox->handle());
                 m_Device.core.CmdSetDescriptorSet(cmd, 0, frameView->frameSet);
                 const VriDrawDesc draw {3, 1, 0, 0};
@@ -757,6 +787,10 @@ namespace vultra
     {
         for (auto& pipelines : m_Pipelines)
         {
+            if (!pipelines.skybox)
+            {
+                continue;
+            }
             for (auto& pipeline : pipelines.forward)
             {
                 pipeline->poll();

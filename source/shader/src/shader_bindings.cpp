@@ -102,7 +102,9 @@ namespace vultra
                                   uint32_t(count),
                                   0,
                                   node.viewType,
-                                  false});
+                                  false,
+                                  node.storageFormat,
+                                  node.writeOnly});
             }
             return {};
         }

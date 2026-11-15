@@ -93,6 +93,8 @@ namespace vultra::detail
                     {"column_major", parameter.columnMajor},
                     {"descriptor_type", parameter.descriptorType ? Json(*parameter.descriptorType) : Json()},
                     {"view_type", parameter.viewType},
+                    {"storage_format", parameter.storageFormat},
+                    {"write_only", parameter.writeOnly},
                     {"offsets", offsets},
                     {"fields", fields},
                     {"attributes", encodeAttributes(parameter.attributes)},
@@ -138,7 +140,14 @@ namespace vultra::detail
             {
                 return makeError("Invalid cooked shader texture view type");
             }
-            parameter.viewType = VriTextureViewType(view);
+            parameter.viewType       = VriTextureViewType(view);
+            const auto storageFormat = document.at("storage_format").get<uint32_t>();
+            if (storageFormat >= uint32_t(VriFormat_Count))
+            {
+                return makeError("Invalid cooked shader storage format");
+            }
+            parameter.storageFormat = VriFormat(storageFormat);
+            parameter.writeOnly     = document.at("write_only").get<bool>();
             if (!document.at("offsets").is_array() || !document.at("fields").is_array())
             {
                 return makeError("Invalid cooked shader layout children");

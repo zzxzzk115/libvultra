@@ -144,11 +144,37 @@ namespace vultra
                 return {};
             }
 
+            VriFormat storageFormat(SlangImageFormat format)
+            {
+                switch (format)
+                {
+                    case SLANG_IMAGE_FORMAT_rgba32f:
+                        return VriFormat_RGBA32_SFLOAT;
+                    case SLANG_IMAGE_FORMAT_rgba16f:
+                        return VriFormat_RGBA16_SFLOAT;
+                    case SLANG_IMAGE_FORMAT_rg32f:
+                        return VriFormat_RG32_SFLOAT;
+                    case SLANG_IMAGE_FORMAT_rg16f:
+                        return VriFormat_RG16_SFLOAT;
+                    case SLANG_IMAGE_FORMAT_r32f:
+                        return VriFormat_R32_SFLOAT;
+                    case SLANG_IMAGE_FORMAT_r16f:
+                        return VriFormat_R16_SFLOAT;
+                    case SLANG_IMAGE_FORMAT_rgba8:
+                        return VriFormat_RGBA8_UNORM;
+                    case SLANG_IMAGE_FORMAT_r32ui:
+                        return VriFormat_R32_UINT;
+                    default:
+                        return VriFormat_Unknown;
+                }
+            }
+
             void reflectResource(slang::TypeLayoutReflection* type, ShaderParameter& result)
             {
                 const auto shape    = type->getResourceShape();
                 const auto base     = shape & SLANG_RESOURCE_BASE_SHAPE_MASK;
                 const bool writable = type->getResourceAccess() != SLANG_RESOURCE_ACCESS_READ;
+                result.writeOnly    = type->getResourceAccess() == SLANG_RESOURCE_ACCESS_WRITE;
                 if (base == SLANG_STRUCTURED_BUFFER || base == SLANG_BYTE_ADDRESS_BUFFER)
                 {
                     result.descriptorType =
@@ -215,6 +241,10 @@ namespace vultra
                 if (result.kind == ShaderParameterKind::eResource)
                 {
                     reflectResource(type, result);
+                    if (variable && result.descriptorType == VriDescriptorType_StorageTexture)
+                    {
+                        result.storageFormat = storageFormat(variable->getImageFormat());
+                    }
                     // Structured-buffer elements have a target layout distinct from their descriptor slot.
                     if ((type->getResourceShape() & SLANG_RESOURCE_BASE_SHAPE_MASK) == SLANG_STRUCTURED_BUFFER)
                     {
@@ -273,9 +303,9 @@ namespace vultra
                     result.stride = type->getElementStride(SLANG_PARAMETER_CATEGORY_UNIFORM);
                     auto* element = type->getElementVarLayout();
                     auto  child   = reflectType(element ? element->getTypeLayout() : type->getElementTypeLayout(),
-                                                element,
-                                                "$element",
-                                                depth + 1);
+                                             element,
+                                             "$element",
+                                             depth + 1);
                     if (!child)
                     {
                         return child;
@@ -296,9 +326,9 @@ namespace vultra
                     }
                     auto* element = type->getElementVarLayout();
                     auto  child   = reflectType(element ? element->getTypeLayout() : type->getElementTypeLayout(),
-                                                element,
-                                                "$element",
-                                                depth + 1);
+                                             element,
+                                             "$element",
+                                             depth + 1);
                     if (!child)
                     {
                         return child;
