@@ -27,6 +27,15 @@ local function add_platform_entry()
     end
 end
 
+-- The Web build has no shader compiler: it links the host-cooked pack in as /project.vpk.
+local function embed_example_pack()
+    local pack = get_config("libvultra_example_pack")
+    on_load(function (target)
+        assert(pack ~= "" and os.isfile(pack), "Cook the example VPK on the host; set libvultra_example_pack")
+        target:add("ldflags", "--embed-file " .. path.absolute(pack) .. "@/project.vpk", {force = true})
+    end)
+end
+
 if selected["basics.vri"] or selected["basics.graph"] or selected.offline or has_group("ui") then
     target("example-common")
         set_kind("static")
@@ -47,12 +56,7 @@ if has_group("basics") then
         add_platform_entry()
         if is_plat("wasm") then
             if selected["basics.vri"] or selected["basics.graph"] or selected["basics.depth-pyramid"] then
-                local pack = get_config("libvultra_example_pack")
-                on_load(function (target)
-                    assert(pack ~= "" and os.isfile(pack),
-                           "Cook the example VPK on the host; set libvultra_example_pack")
-                    target:add("ldflags", "--embed-file " .. path.absolute(pack) .. "@/project.vpk", {force = true})
-                end)
+                embed_example_pack()
             end
         end
         add_mode("basics", "window", "window")
@@ -74,6 +78,9 @@ if selected.offline then
             add_files("offline/android_main.cpp")
         else
             add_files("offline/main.cpp")
+        end
+        if is_plat("wasm") then
+            embed_example_pack()
         end
         set_rundir("$(projectdir)")
     target_end()

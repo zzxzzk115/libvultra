@@ -1,5 +1,6 @@
 [[vk::binding(0, 0)]] Texture2D<float4> source;
-[[vk::binding(1, 0)]] RWTexture2D<float4> destination;
+// Written only, in its own format: core WebGPU has no read-write rgba16f storage, and WGSL names the format.
+[[vk::binding(1, 0)]] [format("rgba16f")] WTexture2D<float4> destination;
 
 struct GainParameters
 {
@@ -25,5 +26,5 @@ void gainMain(uint3 thread : SV_DispatchThreadID)
     }
     // Integer texel loads preserve VRI's image coordinates; both resources contain linear HDR color.
     float4 color = source.Load(int3(thread.xy, 0));
-    destination[thread.xy] = float4(color.rgb * parameters.gain, color.a);
+    destination.Store(thread.xy, float4(color.rgb * parameters.gain, color.a));
 }

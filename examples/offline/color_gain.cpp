@@ -26,7 +26,13 @@ namespace research
                 std::unique_ptr<ColorGain> pass(new ColorGain(device));
                 const std::array           ranges {
                     VriDescriptorRangeDesc {0, 1, VriDescriptorType_Texture, VriShaderStage_Compute},
-                    VriDescriptorRangeDesc {1, 1, VriDescriptorType_StorageTexture, VriShaderStage_Compute}};
+                    VriDescriptorRangeDesc {1,
+                                            1,
+                                            VriDescriptorType_StorageTexture,
+                                            VriShaderStage_Compute,
+                                            VriDescriptorRange_WriteOnly,
+                                            VriTextureViewType_2D,
+                                            VriFormat_RGBA16_SFLOAT}};
                 VriDescriptorSetDesc set {};
                 set.ranges   = ranges.data();
                 set.rangeNum = uint32_t(ranges.size());
@@ -78,10 +84,9 @@ namespace research
                     return pipeline;
                 };
                 const std::vector<ShaderEntry> entries {{"gainMain", VriShaderStage_Compute}};
-                auto                           pipeline =
-                    program ?
-                        ShaderPipeline::create(device, *program, entries, build) :
-                        ShaderPipeline::create(device, "examples/offline/shaders/color_gain.slang", entries, build);
+                const std::filesystem::path    source("examples/offline/shaders/color_gain.slang");
+                auto pipeline = program ? ShaderPipeline::create(device, *program, entries, build) :
+                                          ShaderPipeline::create(device, source, entries, build);
                 if (!pipeline)
                 {
                     return std::unexpected(pipeline.error());
@@ -116,9 +121,9 @@ namespace research
                 {
                     return std::unexpected(info.error());
                 }
-                auto desc          = info->textureDesc;
-                desc.usage         = VriTextureUsage_ShaderResourceStorage | VriTextureUsage_ShaderResource |
-                                     VriTextureUsage_TransferSrc;
+                auto desc  = info->textureDesc;
+                desc.usage = VriTextureUsage_ShaderResourceStorage | VriTextureUsage_ShaderResource |
+                             VriTextureUsage_TransferSrc;
                 const auto created = graph.createTexture(std::string(name) + ".color", desc);
                 if (!created)
                 {

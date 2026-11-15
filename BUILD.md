@@ -27,7 +27,9 @@ branch; their instructions below are kept as instructions and marked where they 
 
 Dependency versions and package recipes live in [external/xmake.lua](external/xmake.lua) and
 [external/packages](external/packages/packages). The initial source build of Slang takes time. MSVC targets and
-packages use matching MT/MTd runtimes. VRI is the tagged [v0.2.1 release](external/vri/README.md), without local patches.
+packages use matching MT/MTd runtimes. VRI is pinned to the tagged [v0.2.1 release](external/vri/README.md),
+without local patches. This branch needs the changes of VRI pull requests 33 to 35, the planned 0.2.2: until that
+release, configure with `--libvultra_vri_dir` pointing at a VRI checkout that merges them.
 
 ## Configure and build
 
@@ -234,7 +236,8 @@ XMAKE_CONFIGDIR="$OUT/web-config" xmake build -y example-basics
 ```
 
 Serve the generated `.html`, `.js` and `.wasm` together over HTTP and pass the mode as `?arg=<mode>`. With the
-WebGPU build, `window`, `vri` and `graph` were verified in a Chromium-based browser on Windows.
+WebGPU build, `window`, `vri` and `graph` were verified in a Chromium-based browser on Windows. `example-offline`,
+selected with `offline`, embeds the same pack and loads its shaders from it unless `--shaders` names another.
 
 Native WebGPU builds the same examples with `--libvultra_graphics_api=webgpu` on a desktop platform; shaders compiled
 at run time then target WGSL. Compute passes with push constants, and storage images in any format but rgba8, need

@@ -44,10 +44,18 @@ namespace
             return makeError("Use a fresh nonempty output directory");
         }
 
-        std::optional<VpkArchive> shaders;
-        if (const auto file = cli.present<std::string>("--shaders"))
+        auto shaderFile = cli.present<std::string>("--shaders");
+#if defined(__EMSCRIPTEN__)
+        // The Web build compiles no Slang; its shaders are in the pack linked in at /project.vpk.
+        if (!shaderFile)
         {
-            auto archive = VpkArchive::create(*file);
+            shaderFile = "/project.vpk";
+        }
+#endif
+        std::optional<VpkArchive> shaders;
+        if (shaderFile)
+        {
+            auto archive = VpkArchive::create(*shaderFile);
             if (!archive)
             {
                 return std::unexpected(archive.error());

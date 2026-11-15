@@ -7,7 +7,6 @@
 
 #include <array>
 #include <bit>
-#include <optional>
 #include <string>
 
 namespace
@@ -62,9 +61,12 @@ public:
         {
             getDevice().core.DestroyDescriptorPool(m_Pool);
         }
-        if (m_Layout)
+        for (auto* layout : {m_Layout, m_DisplayLayout, m_SceneLayout})
         {
-            getDevice().core.DestroyPipelineLayout(m_Layout);
+            if (layout)
+            {
+                getDevice().core.DestroyPipelineLayout(layout);
+            }
         }
     }
 
@@ -78,13 +80,27 @@ private:
     {
     }
 
-    // One layout serves every stage: binding 0 is read, binding 1 written, and the parameters are push constants.
+    // The compute stages read binding 0 and write binding 1; the parameters of every stage are push constants.
     std::expected<void, vultra::Error> buildPipelines(const vultra::ShaderProgram* program)
     {
-        auto&                        device = getDevice();
-        constexpr auto               stages = VriShaderStage_Compute | VriShaderStage_Vertex | VriShaderStage_Fragment;
-        const VriDescriptorRangeDesc ranges[2] {{0, 1, VriDescriptorType_Texture, stages},
-                                                {1, 1, VriDescriptorType_StorageTexture, stages}};
+        auto&          device = getDevice();
+        constexpr auto stages = VriShaderStage_Compute | VriShaderStage_Vertex | VriShaderStage_Fragment;
+        // Binding 0 holds the depth buffer and then r32f levels. Declaring the depth format makes it an unfilterable
+        // float binding, which takes both; r32f alone is filterable on a device with float32-filterable.
+        const VriDescriptorRangeDesc ranges[2] {{0,
+                                                 1,
+                                                 VriDescriptorType_Texture,
+                                                 stages,
+                                                 VriDescriptorRange_None,
+                                                 VriTextureViewType_2D,
+                                                 VriFormat_D32_SFLOAT},
+                                                {1,
+                                                 1,
+                                                 VriDescriptorType_StorageTexture,
+                                                 stages,
+                                                 VriDescriptorRange_None,
+                                                 VriTextureViewType_2D,
+                                                 VriFormat_R32_SFLOAT}};
         const VriDescriptorSetDesc   set {0, ranges, 2};
         const VriPushConstantDesc    constants {0, sizeof(Parameters), stages};
         VriPipelineLayoutDesc        layout {};
@@ -95,6 +111,24 @@ private:
         layout.shaderStages     = stages;
         if (auto created = vultra::check(device.core.CreatePipelineLayout(device.handle, &layout, &m_Layout),
                                          "Create depth pyramid layout");
+            !created)
+        {
+            return created;
+        }
+        // WebGPU wants every binding of a bound group set and every group of a layout bound: the display reads
+        // one texture and the scene none, so each gets a layout of its own.
+        const VriDescriptorSetDesc displaySet {0, ranges, 1};
+        layout.descriptorSets = &displaySet;
+        if (auto created = vultra::check(device.core.CreatePipelineLayout(device.handle, &layout, &m_DisplayLayout),
+                                         "Create depth pyramid display layout");
+            !created)
+        {
+            return created;
+        }
+        layout.descriptorSets   = nullptr;
+        layout.descriptorSetNum = 0;
+        if (auto created = vultra::check(device.core.CreatePipelineLayout(device.handle, &layout, &m_SceneLayout),
+                                         "Create depth pyramid scene layout");
             !created)
         {
             return created;
@@ -113,16 +147,17 @@ private:
             return result;
         };
         // The scene writes depth only; the display writes the backbuffer.
-        const auto graphics = [this](VriFormat color)
+        const auto graphics = [this](VriFormat color, VriPipelineLayout* pipelineLayout)
         {
-            return [this, color](std::span<const VriShaderDesc> shaders) -> std::expected<VriPipeline*, vultra::Error>
+            return [this, color, pipelineLayout](
+                       std::span<const VriShaderDesc> shaders) -> std::expected<VriPipeline*, vultra::Error>
             {
                 VriColorAttachmentDesc attachment {};
                 attachment.format         = color;
                 attachment.colorWriteMask = VriColorWrite_RGBA;
                 VriGraphicsPipelineDesc desc {};
                 desc.pipelineCache           = getDevice().pipelineCache;
-                desc.pipelineLayout          = m_Layout;
+                desc.pipelineLayout          = pipelineLayout;
                 desc.shaders                 = shaders.data();
                 desc.shaderNum               = uint32_t(shaders.size());
                 desc.inputAssembly.topology  = VriPrimitiveTopology_TriangleList;
@@ -158,11 +193,11 @@ private:
                              vultra::ShaderPipeline::create(device, kShader, std::move(entries), std::move(builder));
         };
         auto scene   = create({{"fullscreen", VriShaderStage_Vertex}, {"scene", VriShaderStage_Fragment}},
-                            graphics(VriFormat_D32_SFLOAT));
+                            graphics(VriFormat_D32_SFLOAT, m_SceneLayout));
         auto copy    = create({{"copyDepth", VriShaderStage_Compute}}, compute);
         auto reduce  = create({{"reduce", VriShaderStage_Compute}}, compute);
         auto display = create({{"fullscreen", VriShaderStage_Vertex}, {"display", VriShaderStage_Fragment}},
-                              graphics(getSwapchain().format()));
+                              graphics(getSwapchain().format(), m_DisplayLayout));
         for (const auto* pipeline : {&scene, &copy, &reduce, &display})
         {
             if (!*pipeline)
@@ -187,23 +222,23 @@ private:
     }
 
     // Binds the pipeline and then a set of its own: VRI binds a set where the bound pipeline runs, and a set
-    // must not change between recording and the end of the frame. A null set index binds no set.
+    // must not change between recording and the end of the frame. Without a set, nothing is bound to the layout.
     void bind(VriCommandBuffer*       cmd,
               vultra::ShaderPipeline& pipeline,
-              std::optional<size_t>   index  = std::nullopt,
+              VriPipelineLayout*      layout,
+              VriDescriptorSet*       set    = nullptr,
               VriDescriptor*          source = nullptr,
               VriDescriptor*          target = nullptr)
     {
         auto& device = getDevice();
-        device.core.CmdSetPipelineLayout(cmd, m_Layout);
+        device.core.CmdSetPipelineLayout(cmd, layout);
         device.core.CmdSetPipeline(cmd, pipeline.handle());
-        if (!index)
+        if (!set)
         {
             return;
         }
         const VriDescriptor*               views[2] {source, target};
         const VriDescriptorRangeUpdateDesc updates[2] {{&views[0], 1}, {&views[1], 1}};
-        auto*                              set = m_Sets[*index];
         device.core.UpdateDescriptorRanges(set, 0, target ? 2 : 1, updates);
         device.core.CmdSetDescriptorSet(cmd, 0, set);
     }
@@ -244,12 +279,12 @@ private:
             device.core.DestroyDescriptorPool(m_Pool);
             m_Pool = nullptr;
         }
-        // Set 0 copies the depth, set N reduces into level N and the last one displays the pyramid.
-        m_Sets.resize(m_Levels + 1);
+        // Set 0 copies the depth and set N reduces into level N; the display has a set of its own layout.
+        m_Sets.resize(m_Levels);
         VriDescriptorPoolDesc pool {};
-        pool.descriptorSetMaxNum  = uint32_t(m_Sets.size());
-        pool.textureMaxNum        = uint32_t(m_Sets.size());
-        pool.storageTextureMaxNum = uint32_t(m_Sets.size());
+        pool.descriptorSetMaxNum  = m_Levels + 1;
+        pool.textureMaxNum        = m_Levels + 1;
+        pool.storageTextureMaxNum = m_Levels;
         if (auto created = vultra::check(device.core.CreateDescriptorPool(device.handle, &pool, &m_Pool),
                                          "Create depth pyramid pool");
             !created)
@@ -259,6 +294,13 @@ private:
         if (auto allocated = vultra::check(
                 device.core.AllocateDescriptorSets(m_Pool, m_Layout, 0, m_Sets.data(), uint32_t(m_Sets.size())),
                 "Allocate depth pyramid sets");
+            !allocated)
+        {
+            return allocated;
+        }
+        if (auto allocated =
+                vultra::check(device.core.AllocateDescriptorSets(m_Pool, m_DisplayLayout, 0, &m_DisplaySet, 1),
+                              "Allocate depth pyramid display set");
             !allocated)
         {
             return allocated;
@@ -303,7 +345,7 @@ private:
                                           attachments.renderArea = {0, 0, m_Size.width, m_Size.height};
                                           attachments.layerNum   = 1;
                                           getDevice().core.CmdBeginRendering(cmd, &attachments);
-                                          bind(cmd, *m_Scene);
+                                          bind(cmd, *m_Scene, m_SceneLayout);
                                           drawFullscreen(cmd, {{}, {}, m_Time, 0});
                                           return {};
                                       }));
@@ -319,7 +361,7 @@ private:
                 {
                     return std::unexpected(source ? target.error() : source.error());
                 }
-                bind(cmd, *m_Copy, 0, *source, *target);
+                bind(cmd, *m_Copy, m_Layout, m_Sets[0], *source, *target);
                 return dispatch(cmd, {{}, {m_Size.width, m_Size.height}, 0, 0});
             }));
         for (uint32_t mip = 1; mip < m_Levels; ++mip)
@@ -337,7 +379,7 @@ private:
                     {
                         return std::unexpected(source ? target.error() : source.error());
                     }
-                    bind(cmd, *m_Reduce, mip, *source, *target);
+                    bind(cmd, *m_Reduce, m_Layout, m_Sets[mip], *source, *target);
                     const auto above = levelSize(m_Size, mip - 1);
                     const auto below = levelSize(m_Size, mip);
                     return dispatch(cmd, {{above.width, above.height}, {below.width, below.height}, 0, 0});
@@ -358,7 +400,7 @@ private:
                                           // loaded.
                                           const float clear[4] {0, 0, 0, 1};
                                           vultra::beginColorPass(getDevice(), cmd, *target, m_Size, clear);
-                                          bind(cmd, *m_Display, m_Levels, *source);
+                                          bind(cmd, *m_Display, m_DisplayLayout, m_DisplaySet, *source);
                                           drawFullscreen(cmd, {{m_Size.width, m_Size.height}, {}, 0, m_Levels});
                                           return {};
                                       }));
@@ -404,9 +446,12 @@ private:
     }
 
     sample::Options                         m_Options;
-    VriPipelineLayout*                      m_Layout = nullptr;
-    VriDescriptorPool*                      m_Pool   = nullptr;
+    VriPipelineLayout*                      m_Layout        = nullptr;
+    VriPipelineLayout*                      m_DisplayLayout = nullptr; // One sampled texture.
+    VriPipelineLayout*                      m_SceneLayout   = nullptr; // Push constants only.
+    VriDescriptorPool*                      m_Pool          = nullptr;
     std::vector<VriDescriptorSet*>          m_Sets;
+    VriDescriptorSet*                       m_DisplaySet = nullptr;
     std::unique_ptr<vultra::ShaderPipeline> m_Scene;
     std::unique_ptr<vultra::ShaderPipeline> m_Copy;
     std::unique_ptr<vultra::ShaderPipeline> m_Reduce;

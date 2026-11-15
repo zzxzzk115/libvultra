@@ -45,7 +45,8 @@ namespace vultra
             {7, 1, VriDescriptorType_Texture, kFrameStages},
             {8, 1, VriDescriptorType_Texture, kFrameStages},
             {10, 1, VriDescriptorType_Sampler, kFrameStages},
-            {11, 1, VriDescriptorType_Texture, kFrameStages},
+            // The OpenPBR table is RGBA32F: WebGPU samples it as an unfilterable float without float32-filterable.
+            {11, 1, VriDescriptorType_Texture, kFrameStages, 0, VriTextureViewType_2D, VriFormat_RGBA32_SFLOAT},
             {19, 1, VriDescriptorType_StructuredBuffer, VriShaderStage_Vertex},
             {20, 1, VriDescriptorType_StructuredBuffer, VriShaderStage_Fragment},
         }};
