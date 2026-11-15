@@ -112,6 +112,26 @@ namespace vultra
         }
     } // namespace
 
+    std::span<const SceneResourceDesc> gbufferLayers(VriGraphicsAPI api)
+    {
+        // Keep in sync with vultra.gbuffer and the GBufferOutput of forward.slang and skybox.slang.
+        static const std::vector<SceneResourceDesc> compact {
+            {std::string(kSceneNormal), VriFormat_RG16_SFLOAT, "normal.world"},
+            {std::string(kSceneAlbedo), VriFormat_RGBA8_SRGB, "color.albedo"},
+            {std::string(kSceneMaterial), VriFormat_RG8_UNORM, "material.surface"},
+            {std::string(kSceneEmission), VriFormat_R32_UINT, "color.emission"},
+            {std::string(kSceneMotion), VriFormat_RG16_SFLOAT, "motion.screen"}};
+        static const std::vector<SceneResourceDesc> full {
+            {std::string(kSceneNormal), VriFormat_RG16_SFLOAT, "normal.world"},
+            {std::string(kSceneAlbedo), VriFormat_RGBA8_SRGB, "color.albedo"},
+            {std::string(kSceneMaterial), VriFormat_RGBA16_UNORM, "material.surface"},
+            {std::string(kSceneEmission), VriFormat_RGBA16_SFLOAT, "color.emission"},
+            {std::string(kSceneMotion), VriFormat_RG16_SFLOAT, "motion.screen"},
+            {std::string(kSceneCoat), VriFormat_RGBA16_SFLOAT, "material.coat"},
+            {std::string(kSceneSpecular), VriFormat_RGBA16_SFLOAT, "material.specular"}};
+        return api == VriGraphicsAPI_WebGPU ? compact : full;
+    }
+
     std::expected<RenderGraph::Resource, Error> findSceneResource(std::span<const SceneResource> resources,
                                                                   std::string_view               name)
     {

@@ -1,3 +1,4 @@
+import vultra.gbuffer;
 import vultra.material;
 
 #include "lib/space.slangh"
@@ -32,9 +33,13 @@ struct GBufferOutput
     float4 hdr : SV_Target0;
     float2 normal : SV_Target1;
     float4 albedo : SV_Target2;
-    float2 material : SV_Target3;
-    uint   emission : SV_Target4;
+    VultraMaterialLayer material : SV_Target3;
+    VultraEmissionLayer emission : SV_Target4;
     float2 motion : SV_Target5;
+#ifndef VULTRA_GBUFFER_COMPACT
+    float4 coat : SV_Target6;
+    float4 specular : SV_Target7;
+#endif
 };
 
 [shader("fragment")] GBufferOutput fragmentGBuffer(ScreenVertex input)
@@ -45,6 +50,10 @@ struct GBufferOutput
     output.albedo   = 0;
     output.material = 0;
     output.emission = 0;
+#ifndef VULTRA_GBUFFER_COMPACT
+    output.coat     = 0;
+    output.specular = 0;
+#endif
     float3 farPoint = unproject(input.uv, 1, frame.inverseViewProjection);
     float4 previous = mul(camera.previousViewProjection, float4(farPoint, 1));
     output.motion   = (previous.xy / previous.w - uvToClip(input.uv)) * float2(0.5, -0.5);

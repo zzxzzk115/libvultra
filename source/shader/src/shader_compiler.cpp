@@ -381,6 +381,12 @@ namespace vultra
         {
             macros.push_back({define.name.c_str(), define.value.c_str()});
         }
+        // WebGPU's default 32 bytes of color attachments per sample hold only the compact G-buffer (gbufferLayers),
+        // so vultra.gbuffer selects it for WGSL. The profile is part of the cache key.
+        if (compileOptions.profile == "wgsl")
+        {
+            macros.push_back({"VULTRA_GBUFFER_COMPACT", "1"});
+        }
         ComPtr<detail::ShaderFileSystem> fileSystem;
         fileSystem.attach(new detail::ShaderFileSystem);
         // Track the authored primary file separately from generated in-memory adapter text.

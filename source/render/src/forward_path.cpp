@@ -52,29 +52,26 @@ namespace vultra
         }};
         constexpr uint32_t                               kFrameTextureCount = 5;
 
-        // scene.hdr and the G-buffer layers, in the order of the shaders' GBufferOutput.
-        struct Target
+        // scene.hdr and the G-buffer layers of `api`, in the order of the shaders' GBufferOutput.
+        std::vector<SceneResourceDesc> forwardTargets(VriGraphicsAPI api)
         {
-            std::string_view name;
-            VriFormat        format;
-            std::string_view semantic;
-        };
+            std::vector<SceneResourceDesc> targets {
+                {std::string(kSceneHdr), VriFormat_RGBA16_SFLOAT, "color.linear.hdr"}};
+            const auto layers = gbufferLayers(api);
+            targets.insert(targets.end(), layers.begin(), layers.end());
+            return targets;
+        }
 
-        constexpr std::array<Target, 6> kTargets {
-            {{kSceneHdr, VriFormat_RGBA16_SFLOAT, "color.linear.hdr"},
-             {kSceneNormal, VriFormat_RG16_SFLOAT, "normal.world"},
-             {kSceneAlbedo, VriFormat_RGBA8_SRGB, "color.albedo"},
-             {kSceneMaterial, VriFormat_RG8_UNORM, "material.roughness_metalness"},
-             {kSceneEmission, VriFormat_R32_UINT, "color.emission"},
-             {kSceneMotion, VriFormat_RG16_SFLOAT, "motion.screen"}}};
+        // scene.hdr and the full profile's seven layers.
+        constexpr size_t kMaxTargets = 8;
 
-        std::expected<VriPipeline*, Error> createPipeline(Device&                        device,
-                                                          VriPipelineLayout*             layout,
-                                                          std::span<const VriShaderDesc> shaders,
-                                                          bool                           mesh,
-                                                          bool                           doubleSided,
-                                                          bool                           mirrored,
-                                                          bool                           gbuffer)
+        std::expected<VriPipeline*, Error> createPipeline(Device&                            device,
+                                                          VriPipelineLayout*                 layout,
+                                                          std::span<const VriShaderDesc>     shaders,
+                                                          bool                               mesh,
+                                                          bool                               doubleSided,
+                                                          bool                               mirrored,
+                                                          std::span<const SceneResourceDesc> targets)
         {
             VriVertexStreamDesc    stream {sizeof(SceneVertex), 0, VriVertexStepRate_PerVertex};
             VriVertexAttributeDesc attributes[5] {};
@@ -83,10 +80,10 @@ namespace vultra
             attributes[2] = {.format = VriFormat_RG32_SFLOAT, .offset = offsetof(SceneVertex, uv)};
             attributes[3] = {.format = VriFormat_RGBA32_SFLOAT, .offset = offsetof(SceneVertex, color)};
             attributes[4] = {.format = VriFormat_RGBA32_SFLOAT, .offset = offsetof(SceneVertex, tangent)};
-            std::array<VriColorAttachmentDesc, kTargets.size()> colors {};
-            for (size_t index = 0; index < colors.size(); ++index)
+            std::array<VriColorAttachmentDesc, kMaxTargets> colors {};
+            for (size_t index = 0; index < targets.size(); ++index)
             {
-                colors[index].format         = kTargets[index].format;
+                colors[index].format         = targets[index].format;
                 colors[index].colorWriteMask = VriColorWrite_RGBA;
             }
             VriGraphicsPipelineDesc desc {};
@@ -108,7 +105,7 @@ namespace vultra
             desc.rasterization.lineWidth = 1;
             desc.multisample.sampleNum   = 1;
             desc.outputMerger.colors     = colors.data();
-            desc.outputMerger.colorNum   = gbuffer ? uint32_t(colors.size()) : 1;
+            desc.outputMerger.colorNum   = uint32_t(targets.size());
             VriPipeline* result          = nullptr;
             if (auto created = check(device.core.CreateGraphicsPipeline(device.handle, &desc, &result),
                                      "Create forward path pipeline");
@@ -128,7 +125,7 @@ namespace vultra
                           Extent                          extent,
                           bool                            clearTargets)
         {
-            std::array<VriAttachmentDesc, kTargets.size()> colors {};
+            std::array<VriAttachmentDesc, kMaxTargets> colors {};
             for (size_t index = 0; index < targets.size(); ++index)
             {
                 colors[index].view    = targets[index];
@@ -219,11 +216,8 @@ namespace vultra
 
     StageType forwardShadingStage()
     {
-        std::vector<SceneResourceDesc> provides;
-        for (const auto& target : kTargets)
-        {
-            provides.push_back({std::string(target.name), target.format, std::string(target.semantic)});
-        }
+        // The description is checked before a device exists, so it names the layers of the build's graphics API.
+        auto provides = forwardTargets(Device::defaultGraphicsAPI());
         provides.push_back({std::string(kSceneDepth), VriFormat_D32_SFLOAT, "depth"});
         return {{std::string(ForwardShadingStage::kName),
                  {"shading"},
@@ -339,13 +333,14 @@ namespace vultra
                                           {gbuffer ? "fragmentGBuffer" : "fragmentMain", VriShaderStage_Fragment}},
                 [this, mesh, doubleSided, mirrored, gbuffer](std::span<const VriShaderDesc> stageShaders)
                 {
+                    const auto targets = forwardTargets(m_Device.core.GetDeviceDesc(m_Device.handle)->graphicsAPI);
                     return createPipeline(m_Device,
                                           mesh ? m_Layout : m_SkyLayout,
                                           stageShaders,
                                           mesh,
                                           doubleSided,
                                           mirrored,
-                                          gbuffer);
+                                          std::span(targets).first(gbuffer ? targets.size() : 1));
                 },
                 "builtin/shaders",
                 std::vector<std::filesystem::path> {"builtin/shaders", "external"},
@@ -557,11 +552,12 @@ namespace vultra
         // The G-buffer layers are written only when someone reads one of them; then all of them are.
         if (*build.view == 0)
         {
-            m_GBuffer = std::any_of(kTargets.begin() + 1,
-                                    kTargets.end(),
-                                    [&build](const Target& target)
+            const auto layers = gbufferLayers(m_Device.core.GetDeviceDesc(m_Device.handle)->graphicsAPI);
+            m_GBuffer         = std::any_of(layers.begin(),
+                                    layers.end(),
+                                    [&build](const SceneResourceDesc& layer)
                                     {
-                                        return build.requests(target.name);
+                                        return build.requests(layer.name);
                                     });
             // The G-buffer pipelines exceed some devices' color attachment limits, so they exist only when used.
             if (m_GBuffer && !m_Pipelines[1].skybox)
@@ -572,8 +568,9 @@ namespace vultra
                 }
             }
         }
-        const auto                         size = build.views[*build.view].size;
-        const auto                         used = std::span(kTargets).first(m_GBuffer ? kTargets.size() : 1);
+        const auto size = build.views[*build.view].size;
+        const auto all  = forwardTargets(m_Device.core.GetDeviceDesc(m_Device.handle)->graphicsAPI);
+        const auto used = std::span(all).first(m_GBuffer ? all.size() : 1);
         std::vector<RenderGraph::Resource> targets;
         SceneResources                     provided;
         for (const auto& target : used)

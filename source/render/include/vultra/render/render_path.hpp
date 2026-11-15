@@ -24,13 +24,14 @@ namespace vultra
     // Standard scene resources. Every render path provides the first two; passes after the path depend on names.
     inline constexpr std::string_view kSceneHdr   = "scene.hdr";   // RGBA16_SFLOAT, scene-linear, unexposed.
     inline constexpr std::string_view kSceneDepth = "scene.depth"; // D32_SFLOAT, 0 near to 1 far.
-    // The surface layers of the visible pixels. Paths provide them on request (StageBuild::requested).
-    // Shaders encode and decode them with `import vultra.gbuffer;`; with scene.hdr they fit WebGPU's default 32
-    // bytes of color attachments per sample.
-    inline constexpr std::string_view kSceneNormal   = "scene.normal";   // RG16_SFLOAT, octahedral unit world normal.
-    inline constexpr std::string_view kSceneAlbedo   = "scene.albedo";   // RGBA8_SRGB, base color, occlusion in a.
-    inline constexpr std::string_view kSceneMaterial = "scene.material"; // RG8_UNORM: roughness, metalness.
-    inline constexpr std::string_view kSceneEmission = "scene.emission"; // R32_UINT, emitted radiance as RGB9E5.
+    // The surface layers of the visible pixels. Paths provide them on request (StageBuild::requested), in the
+    // formats of gbufferLayers(); shaders encode and decode them with `import vultra.gbuffer;`.
+    inline constexpr std::string_view kSceneNormal   = "scene.normal";   // Octahedral unit world normal.
+    inline constexpr std::string_view kSceneAlbedo   = "scene.albedo";   // Base color times base weight, occlusion.
+    inline constexpr std::string_view kSceneMaterial = "scene.material"; // Roughness, metalness and more (full).
+    inline constexpr std::string_view kSceneEmission = "scene.emission"; // Emitted radiance.
+    inline constexpr std::string_view kSceneCoat     = "scene.coat";     // Full profile: coat weight, roughness, IOR.
+    inline constexpr std::string_view kSceneSpecular = "scene.specular"; // Full profile: specular color, IOR.
     // RG16_SFLOAT: from a pixel to where its surface was in the previous frame, in UV units (x right, y down),
     // with camera and object motion and without jitter.
     inline constexpr std::string_view kSceneMotion = "scene.motion";
@@ -82,6 +83,12 @@ namespace vultra
         bool        buffer      = false;
         uint32_t    elementSize = 0; // A buffer's bytes per element.
     };
+
+    // The G-buffer layers forward shading writes after scene.hdr, in this order, for a device of `api`. WebGPU gets
+    // the compact profile, which fits its default 32 bytes of color attachments per sample with scene.hdr and has
+    // no scene.coat or scene.specular; the other APIs get the full profile, which keeps every value at the
+    // precision of its source. A stage that declares a layer with the format "standard" gets this format.
+    [[nodiscard]] std::span<const SceneResourceDesc> gbufferLayers(VriGraphicsAPI api);
 
     struct SceneResource
     {
