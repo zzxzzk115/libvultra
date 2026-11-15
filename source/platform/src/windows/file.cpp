@@ -5,6 +5,7 @@
 #include <chrono>
 #include <fstream>
 #include <system_error>
+#include <thread>
 
 namespace vultra
 {
@@ -24,12 +25,24 @@ namespace vultra
             std::filesystem::remove(temporary, ignored);
             return makeError("Write {}: cannot write the temporary file", path.string());
         }
-        if (!MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+        // Another process may hold the destination open for a moment without delete sharing, as an antivirus
+        // scanner does with a file just written; replacing it then fails with access denied or a sharing violation.
+        // Retry for about half a second before reporting the failure.
+        constexpr int kAttempts = 20;
+        for (int attempt = 1;; ++attempt)
         {
-            const std::error_code error(int(GetLastError()), std::system_category());
-            std::filesystem::remove(temporary, ignored);
-            return makeError("Publish asset cache: {}", error.message());
+            if (MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+            {
+                return {};
+            }
+            const DWORD code = GetLastError();
+            if ((code != ERROR_ACCESS_DENIED && code != ERROR_SHARING_VIOLATION) || attempt == kAttempts)
+            {
+                const std::error_code error(int(code), std::system_category());
+                std::filesystem::remove(temporary, ignored);
+                return makeError("Publish {}: {}", path.string(), error.message());
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(25));
         }
-        return {};
     }
 } // namespace vultra

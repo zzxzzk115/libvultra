@@ -13,6 +13,10 @@
 #include <string>
 #include <thread>
 
+#ifdef _WIN32
+#include <Windows.h>
+#endif
+
 namespace
 {
     using support::must;
@@ -49,6 +53,10 @@ namespace
         require(read(path) == first, "Initial publication changed the file contents");
         std::atomic_bool valid {true};
         {
+#ifndef _WIN32
+            // Windows cannot replace a file that a reader holds open without delete sharing, as std::ifstream does,
+            // so a reader that never pauses would block every publication there; publicationOverBusyFile covers a
+            // reader that holds the file for a moment.
             std::jthread reader(
                 [&](std::stop_token stop)
                 {
@@ -61,6 +69,7 @@ namespace
                         }
                     } while (!stop.stop_requested());
                 });
+#endif
             for (int i = 0; i < 32; ++i)
             {
                 must(write(path, i % 2 ? first : second));
@@ -81,6 +90,34 @@ namespace
             require(entry.path().extension() != ".tmp", "Publication left a temporary file behind");
         }
     }
+
+#ifdef _WIN32
+    // An antivirus scanner opens a file just written without delete sharing; publishing over it must wait for the
+    // handle to close instead of failing.
+    void publicationOverBusyFile(const std::filesystem::path& root)
+    {
+        const auto path = root / "busy";
+        must(write(path, "first"));
+        HANDLE handle = CreateFileW(path.c_str(),
+                                    GENERIC_READ,
+                                    FILE_SHARE_READ,
+                                    nullptr,
+                                    OPEN_EXISTING,
+                                    FILE_ATTRIBUTE_NORMAL,
+                                    nullptr);
+        require(handle != INVALID_HANDLE_VALUE, "Cannot hold the published file open");
+        {
+            std::jthread holder(
+                [handle]
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    CloseHandle(handle);
+                });
+            must(write(path, "second"));
+        }
+        require(read(path) == "second", "Publication over a briefly held file did not replace it");
+    }
+#endif
 } // namespace
 
 int main(int argc, char** argv)
@@ -93,6 +130,10 @@ int main(int argc, char** argv)
                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     std::filesystem::create_directories(root);
     atomicPublication(root);
-    vultra::Logger::app().info("Platform tests passed: executable, memory, atomic publication, failure and recovery");
+#ifdef _WIN32
+    publicationOverBusyFile(root);
+#endif
+    vultra::Logger::app().info("Platform tests passed: executable, memory, atomic publication, failure and recovery, "
+                               "publication over a briefly held file");
     return 0;
 }

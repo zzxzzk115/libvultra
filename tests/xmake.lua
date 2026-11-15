@@ -288,7 +288,7 @@ target("test-input-map")
     checkedTest("default")
 target_end()
 
-if is_plat("linux") then
+if is_plat("linux", "windows") then
     target("test-platform")
         set_kind("binary")
         set_default(false)
