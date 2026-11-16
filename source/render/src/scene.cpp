@@ -145,6 +145,32 @@ namespace vultra
             result.maxLod       = sampler.maxLod;
             return result;
         }
+
+        // The vultra.openpbr block of a material whose normal texture has `normalFormat` (Unknown without one): the
+        // layout of OpenPbrParameters in builtin/shaders/resources/gpu_material.slangh.
+        std::array<uint32_t, kOpenPbrParameterWords> openPbrParameters(const SurfaceMaterial& material,
+                                                                       VriFormat              normalFormat)
+        {
+            float normalMode = 0;
+            if (normalFormat != VriFormat_Unknown)
+            {
+                // Two-channel normal maps reconstruct Z in the shader.
+                normalMode = normalFormat == VriFormat_BC5_UNORM || normalFormat == VriFormat_RG8_UNORM ? 2.0f : 1.0f;
+            }
+            const std::array<glm::vec4, kOpenPbrParameterWords / 4> values {
+                material.baseColor,
+                glm::vec4 {material.baseMetalness,
+                           material.specularRoughness,
+                           material.specularIor,
+                           material.normalScale},
+                glm::vec4 {material.emissionColor * material.emissionLuminance, material.occlusionStrength},
+                glm::vec4 {material.coatWeight, material.coatRoughness, material.coatIor, material.specularWeight},
+                glm::vec4 {material.specularColor, material.baseDiffuseRoughness},
+                glm::vec4 {material.alphaCutoff, material.baseWeight, 0, normalMode}};
+            std::array<uint32_t, kOpenPbrParameterWords> words {};
+            std::memcpy(words.data(), values.data(), sizeof(words));
+            return words;
+        }
     } // namespace
 
     GpuScene::GpuScene(Device& device, const SceneData& scene) :
@@ -334,6 +360,15 @@ namespace vultra
             }
             result->materialTextures.push_back(slots);
         }
+        for (uint32_t material = 0; material < result->materials.size(); ++material)
+        {
+            result->m_MaterialHeaders.push_back({kOpenPbrMaterialType, material * kOpenPbrParameterWords});
+        }
+        result->m_MaterialWords.resize(result->materials.size() * kOpenPbrParameterWords);
+        if (auto uploaded = result->uploadMaterials(); !uploaded)
+        {
+            return std::unexpected(uploaded.error());
+        }
         return result;
     }
 
@@ -386,6 +421,97 @@ namespace vultra
         m_Device.core.UnmapBuffer(transforms->handle);
         ++m_TransformRevision;
         return {};
+    }
+
+    std::expected<void, Error>
+    GpuScene::setMaterialType(uint32_t material, uint32_t type, std::span<const uint32_t> parameters)
+    {
+        if (material >= m_MaterialHeaders.size())
+        {
+            return makeError("Set the type of material {}: the scene has {} materials", material, materials.size());
+        }
+        // The new block goes to the end; the old one stays unused in the buffer.
+        m_MaterialHeaders[material] = {type, uint32_t(m_MaterialWords.size())};
+        m_MaterialWords.insert(m_MaterialWords.end(), parameters.begin(), parameters.end());
+        return uploadMaterials();
+    }
+
+    const MaterialHeader& GpuScene::materialHeader(uint32_t material) const
+    {
+        if (material >= m_MaterialHeaders.size())
+        {
+            panic("GpuScene material index out of range");
+        }
+        return m_MaterialHeaders[material];
+    }
+
+    std::expected<void, Error> GpuScene::writeMaterials()
+    {
+        for (uint32_t material = 0; material < m_MaterialHeaders.size(); ++material)
+        {
+            const auto& header = m_MaterialHeaders[material];
+            if (header.type != kOpenPbrMaterialType)
+            {
+                continue;
+            }
+            const auto& source = materials[material];
+            const auto  normalFormat =
+                source.normalTexture.image >= 0 ? materialTextures[material][2]->desc.format : VriFormat_Unknown;
+            const auto words = openPbrParameters(source, normalFormat);
+            std::ranges::copy(words, m_MaterialWords.begin() + header.offset);
+        }
+        if (m_MaterialWords.empty())
+        {
+            return {};
+        }
+        auto* mapped = m_Device.core.MapBuffer(materialData->handle, 0, m_MaterialWords.size() * sizeof(uint32_t));
+        if (!mapped)
+        {
+            return makeError("Map scene.material_data");
+        }
+        std::memcpy(mapped, m_MaterialWords.data(), m_MaterialWords.size() * sizeof(uint32_t));
+        m_Device.core.UnmapBuffer(materialData->handle);
+        return {};
+    }
+
+    std::expected<void, Error> GpuScene::uploadMaterials()
+    {
+        // Host-visible like the transforms, because writeMaterials() rewrites the data every frame. Storage
+        // buffers are never empty: a scene without materials gets one zero record and word.
+        const auto create = [this](size_t count, uint32_t stride, std::unique_ptr<Buffer>& buffer)
+        {
+            auto created = Buffer::create(m_Device,
+                                          VriBufferDesc {std::max<size_t>(count, 1) * stride,
+                                                         stride,
+                                                         VriBufferUsage_StorageBuffer,
+                                                         VriMemoryLocation_HostUpload});
+            if (!created)
+            {
+                return std::expected<void, Error>(std::unexpected(created.error()));
+            }
+            buffer = std::make_unique<Buffer>(std::move(*created));
+            return std::expected<void, Error> {};
+        };
+        if (auto created = create(m_MaterialHeaders.size(), sizeof(MaterialHeader), materialHeaders); !created)
+        {
+            return created;
+        }
+        if (auto created = create(m_MaterialWords.size(), sizeof(uint32_t), materialData); !created)
+        {
+            return created;
+        }
+        if (!m_MaterialHeaders.empty())
+        {
+            auto* mapped =
+                m_Device.core.MapBuffer(materialHeaders->handle, 0, m_MaterialHeaders.size() * sizeof(MaterialHeader));
+            if (!mapped)
+            {
+                return makeError("Map scene.materials");
+            }
+            std::memcpy(mapped, m_MaterialHeaders.data(), m_MaterialHeaders.size() * sizeof(MaterialHeader));
+            m_Device.core.UnmapBuffer(materialHeaders->handle);
+        }
+        return writeMaterials();
     }
 
     bool GpuScene::primitiveMirrored(uint32_t index) const

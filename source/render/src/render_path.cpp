@@ -1,5 +1,6 @@
 #include <vultra/render/environment.hpp>
 #include <vultra/render/render_path.hpp>
+#include <vultra/render/scene.hpp>
 
 #include <algorithm>
 #include <array>
@@ -655,6 +656,10 @@ namespace vultra
         if (auto updated = m_Lights->update(lights); !updated)
         {
             return updated;
+        }
+        if (auto written = m_Scene->writeMaterials(); !written)
+        {
+            return written;
         }
         for (uint32_t index = 0; index < cameras.size(); ++index)
         {

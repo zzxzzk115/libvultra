@@ -15,15 +15,16 @@ namespace vultra
 {
     class GpuScene;
 
-    // The scene's materials as `import vultra.material;` reads them: each material's textures and samplers in
-    // descriptor set 1 and its constants, with the primitive's transform index, as push constants. Every stage
-    // that rasterizes the scene with its materials draws through this class.
+    // The scene's materials as `import vultra.material;` reads them: each material's textures and samplers and
+    // scene.material_data in descriptor set 1, and the primitive's transform index, material number, type and
+    // parameter offset as push constants. Every stage that rasterizes the scene with its materials draws through
+    // this class.
     class SceneMaterials
     {
     public:
         static constexpr uint32_t kSet = 1;
 
-        // Set 1 of a stage's pipeline layout: seven textures, then one sampler for each.
+        // Set 1 of a stage's pipeline layout: seven textures, one sampler for each, then scene.material_data.
         static std::span<const VriDescriptorRangeDesc> ranges();
         // The push constants of a stage's pipeline layout, for vertex and fragment shaders.
         static VriPushConstantDesc constants();
@@ -54,7 +55,8 @@ namespace vultra
         VriPipelineLayout*             m_Layout;
         GpuScene&                      m_Scene;
         VriDescriptorPool*             m_Pool = nullptr;
-        std::vector<VriDescriptorSet*> m_Sets;     // One per material.
-        std::vector<VriDescriptor*>    m_Samplers; // The default sampler, then one per scene sampler.
+        VriDescriptor*                 m_Data = nullptr; // scene.material_data, the same in every set.
+        std::vector<VriDescriptorSet*> m_Sets;           // One per material.
+        std::vector<VriDescriptor*>    m_Samplers;       // The default sampler, then one per scene sampler.
     };
 } // namespace vultra

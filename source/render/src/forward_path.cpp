@@ -169,10 +169,12 @@ namespace vultra
             std::expected<SceneResources, Error> addPasses(StageBuild& build) override
             {
                 SceneResources                                            resources;
-                const std::array<std::pair<std::string_view, Buffer*>, 3> buffers {
+                const std::array<std::pair<std::string_view, Buffer*>, 5> buffers {
                     std::pair {kSceneVertices, build.scene.vertices.get()},
                     std::pair {kSceneIndices, build.scene.indices.get()},
-                    std::pair {kSceneInstances, build.scene.transforms.get()}};
+                    std::pair {kSceneInstances, build.scene.transforms.get()},
+                    std::pair {kSceneMaterials, build.scene.materialHeaders.get()},
+                    std::pair {kSceneMaterialData, build.scene.materialData.get()}};
                 for (const auto& [name, buffer] : buffers)
                 {
                     const auto imported = build.graph.importResource(build.graphName(name), *buffer);
@@ -207,14 +209,16 @@ namespace vultra
                  {},
                  {bufferResource(kSceneVertices, sizeof(SceneVertex)),
                   bufferResource(kSceneIndices, sizeof(uint32_t)),
-                  bufferResource(kSceneInstances, sizeof(PrimitiveTransform))}},
+                  bufferResource(kSceneInstances, sizeof(PrimitiveTransform)),
+                  bufferResource(kSceneMaterials, sizeof(MaterialHeader)),
+                  bufferResource(kSceneMaterialData, sizeof(uint32_t))}},
                 [](Device&, const AssetSource*) -> std::expected<std::unique_ptr<RenderStage>, Error>
                 {
                     return std::make_unique<MeshStage>();
                 }};
     }
 
-    StageType forwardShadingStage(VriGraphicsAPI api)
+    StageType forwardShadingStage(VriGraphicsAPI api, const AssetSource* materialShaders)
     {
         // The description is checked before a device exists, so the caller names the API it describes.
         auto provides = forwardTargets(api);
@@ -228,9 +232,10 @@ namespace vultra
                   {std::string(kSceneLights)},
                   {std::string(kCameraData)}},
                  std::move(provides)},
-                [](Device& device, const AssetSource* shaders) -> std::expected<std::unique_ptr<RenderStage>, Error>
+                [materialShaders](Device&            device,
+                                  const AssetSource* shaders) -> std::expected<std::unique_ptr<RenderStage>, Error>
                 {
-                    auto stage = ForwardShadingStage::create(device, shaders);
+                    auto stage = ForwardShadingStage::create(device, shaders, materialShaders);
                     if (!stage)
                     {
                         return std::unexpected(stage.error());
@@ -258,8 +263,8 @@ namespace vultra
     {
     }
 
-    std::expected<std::unique_ptr<ForwardShadingStage>, Error> ForwardShadingStage::create(Device&            device,
-                                                                                           const AssetSource* shaders)
+    std::expected<std::unique_ptr<ForwardShadingStage>, Error>
+    ForwardShadingStage::create(Device& device, const AssetSource* shaders, const AssetSource* materialShaders)
     {
         // The destructor releases whatever was created when a later step fails.
         std::unique_ptr<ForwardShadingStage> stage(new ForwardShadingStage(device));
@@ -308,7 +313,8 @@ namespace vultra
             return std::unexpected(created.error());
         }
 
-        stage->m_Shaders = shaders;
+        stage->m_Shaders         = shaders;
+        stage->m_MaterialShaders = materialShaders;
         if (auto created = stage->createPipelines(false); !created)
         {
             return std::unexpected(created.error());
@@ -344,7 +350,7 @@ namespace vultra
                 },
                 "builtin/shaders",
                 std::vector<std::filesystem::path> {"builtin/shaders", "external"},
-                m_Shaders);
+                mesh && m_MaterialShaders ? m_MaterialShaders : m_Shaders);
         };
         for (uint32_t variant = 0; variant < pipelines.forward.size(); ++variant)
         {

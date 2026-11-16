@@ -2,23 +2,25 @@
 
 #include "resources/mesh_vertex.slangh"
 
-struct MaterialData
+// What a draw of the scene pushes: x the primitive's transform index, y its material number, z the material's type
+// in the program's vultra.materials and w where the material's parameter block starts in materialData, in words.
+struct MaterialDraw
 {
-    float4 baseColor;
-    float4 surface;
-    float4 emission;
-    float4 coat;
-    float4 specular;
-    float4 flags;
-    uint4  meshlets;
-    uint4  instance; // Transform buffer index; the remaining lanes are reserved.
+    uint4 instance;
 };
 
-// D3D12 registers follow VRI's mapping of the material set (space 1): textures and samplers count from 0 in the
-// layout's range order. Slang places the push constants at b2 in space 0, the first register after the frame
-// set's two pinned constant buffers. An explicit register would also reserve a descriptor slot in the SPIR-V and
-// WGSL layouts.
-[[vk::push_constant]] ConstantBuffer<MaterialData> material;
+// One record of scene.materials, per material number; keep in sync with MaterialHeader in vultra/render/scene.hpp.
+struct VultraMaterialHeader
+{
+    uint type;   // The type's number in the program's vultra.materials; 0 is vultra.openpbr.
+    uint offset; // The first word of the material's parameter block in scene.material_data.
+};
+
+// D3D12 registers follow VRI's mapping of the material set (space 1): textures, samplers and the parameter buffer
+// count from 0 per class in the layout's range order. Slang places the push constants at b2 in space 0, the first
+// register after the frame set's two pinned constant buffers. An explicit register would also reserve a descriptor
+// slot in the SPIR-V and WGSL layouts.
+[[vk::push_constant]] ConstantBuffer<MaterialDraw> material;
 [[vk::binding(0, 1)]] Texture2D<float4>            baseColorTexture : register(t0, space1);
 [[vk::binding(1, 1)]] Texture2D<float4>            metallicRoughnessTexture : register(t1, space1);
 [[vk::binding(2, 1)]] Texture2D<float4>            normalTexture : register(t2, space1);
@@ -34,12 +36,46 @@ struct MaterialData
 [[vk::binding(11, 1)]] SamplerState                emissionSampler : register(s4, space1);
 [[vk::binding(12, 1)]] SamplerState                specularSampler : register(s5, space1);
 [[vk::binding(13, 1)]] SamplerState                specularColorSampler : register(s6, space1);
+// scene.material_data: the parameter blocks of every material, as 32-bit words.
+[[vk::binding(14, 1)]] StructuredBuffer<uint>      materialData : register(t7, space1);
 
-// The base color of the bound material at `uv`; discards a fragment below its alpha cutoff.
+// The parameters of a vultra.openpbr material, the block GpuScene writes for it.
+struct OpenPbrParameters
+{
+    float4 baseColor;
+    float4 surface;  // Metalness, roughness, specular IOR, normal scale.
+    float4 emission; // Emitted radiance, occlusion strength.
+    float4 coat;     // Weight, roughness, IOR; specular weight.
+    float4 specular; // Specular color, diffuse roughness.
+    float4 flags;    // Alpha cutoff, base weight, unused, normal map mode.
+};
+
+float4 vultraMaterialFloat4(uint offset)
+{
+    return asfloat(uint4(materialData[offset], materialData[offset + 1], materialData[offset + 2],
+                         materialData[offset + 3]));
+}
+
+// The vultra.openpbr parameters of the bound material.
+OpenPbrParameters vultraOpenPbrParameters()
+{
+    const uint        offset = material.instance.w;
+    OpenPbrParameters result;
+    result.baseColor = vultraMaterialFloat4(offset);
+    result.surface   = vultraMaterialFloat4(offset + 4);
+    result.emission  = vultraMaterialFloat4(offset + 8);
+    result.coat      = vultraMaterialFloat4(offset + 12);
+    result.specular  = vultraMaterialFloat4(offset + 16);
+    result.flags     = vultraMaterialFloat4(offset + 20);
+    return result;
+}
+
+// The base color of the bound vultra.openpbr material at `uv`; discards a fragment below its alpha cutoff.
 float4 vultraBaseColor(float2 uv, float4 color)
 {
-    float4 result = baseColorTexture.Sample(baseColorSampler, uv) * material.baseColor * color;
-    if (result.a < material.flags.x)
+    const OpenPbrParameters parameters = vultraOpenPbrParameters();
+    float4 result = baseColorTexture.Sample(baseColorSampler, uv) * parameters.baseColor * color;
+    if (result.a < parameters.flags.x)
     {
         discard;
     }
@@ -48,8 +84,9 @@ float4 vultraBaseColor(float2 uv, float4 color)
 
 float3 surfaceNormal(SurfaceVertex input)
 {
-    float3 normal = normalize(input.normal);
-    if (material.flags.w < 0.5)
+    const OpenPbrParameters parameters = vultraOpenPbrParameters();
+    float3                  normal     = normalize(input.normal);
+    if (parameters.flags.w < 0.5)
     {
         return normal;
     }
@@ -62,10 +99,10 @@ float3 surfaceNormal(SurfaceVertex input)
     tangent *= rsqrt(tangentLength);
     float3 bitangent = input.tangent.w * cross(normal, tangent);
     float3 mapped    = normalTexture.Sample(normalSampler, input.uv).xyz * 2 - 1;
-    if (material.flags.w > 1.5)
+    if (parameters.flags.w > 1.5)
     {
         mapped.z = sqrt(saturate(1 - dot(mapped.xy, mapped.xy))); // BC5 stores only X and Y.
     }
-    mapped.xy *= material.surface.w;
+    mapped.xy *= parameters.surface.w;
     return normalize(tangent * mapped.x + bitangent * mapped.y + normal * mapped.z);
 }

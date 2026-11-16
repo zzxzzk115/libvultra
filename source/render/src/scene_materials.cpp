@@ -8,29 +8,25 @@ namespace vultra
 {
     namespace
     {
-        // Keep in sync with MaterialData in builtin/shaders/resources/gpu_material.slangh.
-        struct MaterialData
-        {
-            glm::vec4  baseColor;
-            glm::vec4  surface;
-            glm::vec4  emission;
-            glm::vec4  coat;
-            glm::vec4  specular;
-            glm::vec4  flags;
-            glm::uvec4 meshlets;
-            glm::uvec4 instance; // Primitive transform index.
-        };
+        // Keep in sync with MaterialDraw in builtin/shaders/resources/gpu_material.slangh: the primitive's transform
+        // index, its material number, the material's type and the first word of its parameter block.
+        using MaterialDraw = glm::uvec4;
 
-        static_assert(sizeof(MaterialData) == 128);
+        // Seven textures, one sampler for each, then scene.material_data.
+        constexpr uint32_t kRangeCount = 2 * kMaterialTextureCount + 1;
 
-        constexpr std::array<VriDescriptorRangeDesc, 2 * kMaterialTextureCount> kRanges = []
+        constexpr std::array<VriDescriptorRangeDesc, kRangeCount> kRanges = []
         {
-            std::array<VriDescriptorRangeDesc, 2 * kMaterialTextureCount> ranges {};
-            for (uint32_t i = 0; i < ranges.size(); ++i)
+            std::array<VriDescriptorRangeDesc, kRangeCount> ranges {};
+            for (uint32_t i = 0; i < 2 * kMaterialTextureCount; ++i)
             {
                 const auto type = i < kMaterialTextureCount ? VriDescriptorType_Texture : VriDescriptorType_Sampler;
                 ranges[i]       = {i, 1, type, VriShaderStage_Fragment};
             }
+            ranges[2 * kMaterialTextureCount] = {2 * kMaterialTextureCount,
+                                                 1,
+                                                 VriDescriptorType_StructuredBuffer,
+                                                 VriShaderStage_Fragment};
             return ranges;
         }();
 
@@ -91,7 +87,7 @@ namespace vultra
     VriPushConstantDesc SceneMaterials::constants()
     {
         // Register b2: on D3D12 the frame set's constant buffers take b0 and b1 in the same space.
-        return {2, sizeof(MaterialData), VriShaderStage_Vertex | VriShaderStage_Fragment};
+        return {2, sizeof(MaterialDraw), VriShaderStage_Vertex | VriShaderStage_Fragment};
     }
 
     SceneMaterials::SceneMaterials(Device& device, VriPipelineLayout* layout, GpuScene& scene) :
@@ -124,10 +120,22 @@ namespace vultra
         {
             return result;
         }
+        const VriBufferViewDesc data {scene.materialData->handle,
+                                      VriDescriptorType_StructuredBuffer,
+                                      VriFormat_Unknown,
+                                      0,
+                                      scene.materialData->desc.size};
+        if (auto created =
+                check(device.core.CreateBufferView(device.handle, &data, &result->m_Data), "Create material data view");
+            !created)
+        {
+            return std::unexpected(created.error());
+        }
         VriDescriptorPoolDesc pool {};
-        pool.descriptorSetMaxNum = count;
-        pool.textureMaxNum       = count * kMaterialTextureCount;
-        pool.samplerMaxNum       = count * kMaterialTextureCount;
+        pool.descriptorSetMaxNum    = count;
+        pool.textureMaxNum          = count * kMaterialTextureCount;
+        pool.samplerMaxNum          = count * kMaterialTextureCount;
+        pool.structuredBufferMaxNum = count;
         if (auto created =
                 check(device.core.CreateDescriptorPool(device.handle, &pool, &result->m_Pool), "Create material pool");
             !created)
@@ -154,7 +162,8 @@ namespace vultra
                                                   source.specularColorTexture};
             const VriDescriptor*         textures[kMaterialTextureCount] {};
             const VriDescriptor*         materialSamplers[kMaterialTextureCount] {};
-            VriDescriptorRangeUpdateDesc updates[2 * kMaterialTextureCount] {};
+            const VriDescriptor*         data = result->m_Data;
+            VriDescriptorRangeUpdateDesc updates[kRangeCount] {};
             for (uint32_t slot = 0; slot < kMaterialTextureCount; ++slot)
             {
                 if (slots[slot].sampler < -1 ||
@@ -172,7 +181,8 @@ namespace vultra
                 updates[slot]                         = {&textures[slot], 1};
                 updates[kMaterialTextureCount + slot] = {&materialSamplers[slot], 1};
             }
-            device.core.UpdateDescriptorRanges(result->m_Sets[material], 0, 2 * kMaterialTextureCount, updates);
+            updates[2 * kMaterialTextureCount] = {&data, 1};
+            device.core.UpdateDescriptorRanges(result->m_Sets[material], 0, kRangeCount, updates);
         }
         return result;
     }
@@ -182,6 +192,10 @@ namespace vultra
         if (m_Pool)
         {
             m_Device.core.DestroyDescriptorPool(m_Pool);
+        }
+        if (m_Data)
+        {
+            m_Device.core.DestroyDescriptor(m_Data);
         }
         for (auto* sampler : m_Samplers)
         {
@@ -229,22 +243,8 @@ namespace vultra
                 m_Device.core.CmdSetDescriptorSet(cmd, 0, set0);
                 activePipeline = pipeline;
             }
-            float normalMode = 0;
-            if (material.normalTexture.image >= 0)
-            {
-                // Two-channel normal maps reconstruct Z in the shader.
-                const auto format = m_Scene.materialTextures[primitive.material][2]->desc.format;
-                normalMode        = format == VriFormat_BC5_UNORM || format == VriFormat_RG8_UNORM ? 2.0f : 1.0f;
-            }
-            const MaterialData parameters {
-                material.baseColor,
-                {material.baseMetalness, material.specularRoughness, material.specularIor, material.normalScale},
-                {material.emissionColor * material.emissionLuminance, material.occlusionStrength},
-                {material.coatWeight, material.coatRoughness, material.coatIor, material.specularWeight},
-                {material.specularColor, material.baseDiffuseRoughness},
-                {material.alphaCutoff, material.baseWeight, 0, normalMode},
-                {0, 0, 0, 0},
-                {index, 0, 0, 0}};
+            const auto&        header = m_Scene.materialHeader(primitive.material);
+            const MaterialDraw parameters {index, primitive.material, header.type, header.offset};
             m_Device.core.CmdSetConstants(cmd, 0, &parameters, sizeof(parameters));
             m_Device.core.CmdSetDescriptorSet(cmd, kSet, m_Sets[primitive.material]);
             const VriDrawIndexedDesc draw {primitive.indexCount, 1, primitive.firstIndex, 0, 0};
