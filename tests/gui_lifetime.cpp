@@ -1,4 +1,5 @@
 #include "support/check.hpp"
+#include "support/cleared_texture.hpp"
 
 #include <vultra/gpu/image_readback.hpp>
 #include <vultra/ui/editor_gui.hpp>
@@ -22,7 +23,7 @@ int main()
     const auto first =
         must(EditorGui::create(*device, VriFormat_RGBA8_UNORM, {.multiViewport = false, .persistLayout = false}));
     const Extent size {320, 200};
-    auto         target     = must(Texture::create(*device, colorTexture(size)));
+    auto         target     = must(Texture::create(*device, support::clearedTexture(size, {0, 0, 0, 1})));
     const auto   submission = must(Frame::create(*device));
     {
         const auto second =

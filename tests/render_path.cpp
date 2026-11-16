@@ -1,4 +1,5 @@
 #include "support/check.hpp"
+#include "support/cleared_texture.hpp"
 #include "support/forward_fixture.hpp"
 
 #include <vultra/assets/asset_pipeline.hpp>
@@ -24,6 +25,7 @@
 
 namespace
 {
+    using support::clearedTexture;
     using support::finite;
     using support::ForwardFixture;
     using support::must;
@@ -76,15 +78,15 @@ namespace
         const auto constants = std::ranges::find(bindings, true, &ShaderResourceBinding::pushConstant);
         require(constants != bindings.end() && constants->uniformSize == 32,
                 "Blit target reflection differs from the 32-byte CPU push constants");
-        RenderGraph graph(device);
-        const auto  input  = must(graph.createTexture("raw", colorTexture({4, 4}, VriFormat_RGBA32_SFLOAT)));
-        const auto  output = must(graph.createTexture("mapped", colorTexture({4, 4}, VriFormat_RGBA32_SFLOAT)));
-        const float raw[4] {-2, 0, 2, 4};
+        RenderGraph                graph(device);
+        const std::array<float, 4> raw {-2, 0, 2, 4};
+        const auto input  = must(graph.createTexture("raw", clearedTexture({4, 4}, raw, VriFormat_RGBA32_SFLOAT)));
+        const auto output = must(graph.createTexture("mapped", colorTexture({4, 4}, VriFormat_RGBA32_SFLOAT)));
         must(graph.addPass("Raw AOV",
                            {{input, Usage::eColorWrite}},
                            [&](VriCommandBuffer* cmd, RenderGraph& resources)
                            {
-                               return clearPass(device, cmd, resources.getTexture(input), raw);
+                               return clearPass(device, cmd, resources.getTexture(input), raw.data());
                            }));
         const auto blit = must(TextureBlit::create(device, VriFormat_RGBA32_SFLOAT));
         ImageView  view {ImageChannel::eRgb, -2, 2};
@@ -1168,9 +1170,9 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
         std::expected<vultra::SceneResources, vultra::Error> addPasses(vultra::StageBuild& build) override
         {
             using namespace vultra;
-            const auto texture =
-                build.graph.createTexture(build.graphName("test.background"),
-                                          colorTexture(build.views.front().size, VriFormat_RGBA16_SFLOAT));
+            const auto texture = build.graph.createTexture(
+                build.graphName("test.background"),
+                support::clearedTexture(build.views.front().size, kColor, VriFormat_RGBA16_SFLOAT));
             if (!texture)
             {
                 return std::unexpected(texture.error());

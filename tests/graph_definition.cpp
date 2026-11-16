@@ -1,5 +1,6 @@
 #include "../examples/offline/color_gain.hpp"
 #include "support/check.hpp"
+#include "support/cleared_texture.hpp"
 
 #include <vultra/gpu/image_readback.hpp>
 #include <vultra/graph/graph_definition.hpp>
@@ -14,6 +15,7 @@
 namespace
 {
     using namespace vultra;
+    using support::clearedTexture;
     using support::must;
     using support::require;
 
@@ -137,15 +139,15 @@ namespace
         definition.edges.push_back({"boost.color", "record.source"});
         definition.edges.push_back({"scene.hdr", "unavailable.source"});
         definition.outputs = {"scene.hdr"};
-        GraphBuild  state;
-        RenderGraph graph(device);
-        const auto  source = must(graph.createTexture("source", colorTexture({8, 8}, VriFormat_RGBA16_SFLOAT)));
+        GraphBuild                 state;
+        RenderGraph                graph(device);
+        const std::array<float, 4> color {0.25f, 0.5f, 1, 1};
+        const auto source = must(graph.createTexture("source", clearedTexture({8, 8}, color, VriFormat_RGBA16_SFLOAT)));
         must(graph.addPass("Source",
                            {{source, Usage::eColorWrite}},
                            [&](VriCommandBuffer* cmd, RenderGraph& current)
                            {
-                               const float color[4] {0.25f, 0.5f, 1, 1};
-                               return clearPass(device, cmd, current.getTexture(source), {8, 8}, color);
+                               return clearPass(device, cmd, current.getTexture(source), {8, 8}, color.data());
                            }));
         const std::array imports {GraphBinding {"scene.hdr", source}};
         state = must(definition.build(graph, catalog, imports));
@@ -170,16 +172,17 @@ namespace
 
     Image render(Device& device, const PassCatalog& catalog, const GraphDefinition* definition)
     {
-        GraphBuild   state;
-        RenderGraph  graph(device);
-        const Extent extent {13, 9};
-        const auto   source = must(graph.createTexture("scene_hdr", colorTexture(extent, VriFormat_RGBA16_SFLOAT)));
+        GraphBuild                 state;
+        RenderGraph                graph(device);
+        const Extent               extent {13, 9};
+        const std::array<float, 4> color {0.25f, 0.5f, 4, 0.75f};
+        const auto                 source =
+            must(graph.createTexture("scene_hdr", clearedTexture(extent, color, VriFormat_RGBA16_SFLOAT)));
         must(graph.addPass("Scene",
                            {{source, Usage::eColorWrite}},
                            [&](VriCommandBuffer* cmd, RenderGraph& resources)
                            {
-                               const float color[4] {0.25f, 0.5f, 4, 0.75f};
-                               return clearPass(device, cmd, resources.getTexture(source), extent, color);
+                               return clearPass(device, cmd, resources.getTexture(source), extent, color.data());
                            }));
         RenderGraph::Resource output {};
         if (definition)
@@ -240,17 +243,17 @@ namespace
 
     Image renderTone(Device& device, const PassCatalog& catalog, bool definitionDriven)
     {
-        const auto   tone = must(ToneMappingPass::create(device));
-        GraphBuild   build;
-        RenderGraph  graph(device);
-        const Extent size {13, 9};
-        const auto   hdr = must(graph.createTexture("hdr", colorTexture(size, VriFormat_RGBA16_SFLOAT)));
+        const auto                 tone = must(ToneMappingPass::create(device));
+        GraphBuild                 build;
+        RenderGraph                graph(device);
+        const Extent               size {13, 9};
+        const std::array<float, 4> clear {0.25f, 0.5f, 4, 0.75f};
+        const auto hdr = must(graph.createTexture("hdr", clearedTexture(size, clear, VriFormat_RGBA16_SFLOAT)));
         must(graph.addPass("Clear HDR",
                            {{hdr, Usage::eColorWrite}},
                            [&](VriCommandBuffer* cmd, RenderGraph& current)
                            {
-                               const float color[4] {0.25f, 0.5f, 4, 0.75f};
-                               return clearPass(device, cmd, current.getTexture(hdr), size, color);
+                               return clearPass(device, cmd, current.getTexture(hdr), size, clear.data());
                            }));
         RenderGraph::Resource       color;
         const std::array<double, 3> parameters {0, 0, 0};

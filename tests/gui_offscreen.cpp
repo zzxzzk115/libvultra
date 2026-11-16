@@ -1,4 +1,5 @@
 #include "support/check.hpp"
+#include "support/cleared_texture.hpp"
 
 #include <vultra/core/base/stable_id.hpp>
 #include <vultra/gpu/image_readback.hpp>
@@ -30,7 +31,7 @@ int main()
                                                          VriFormat_RGBA8_UNORM,
                                                          {.multiViewport = false, .persistLayout = false}));
     const Extent         extent {480, 360};
-    auto                 target   = must(Texture::create(*device, colorTexture(extent)));
+    auto                 target   = must(Texture::create(*device, support::clearedTexture(extent, {0, 0, 0, 1})));
     const auto           frame    = must(Frame::create(*device));
     bool                 enabled  = false;
     std::string          text     = "short";
