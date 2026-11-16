@@ -71,6 +71,11 @@ namespace
             release();
         }
 
+        VriGraphicsAPI graphicsAPI() const
+        {
+            return m_Device->graphicsAPI();
+        }
+
         uint32_t run(const vultra::ShaderProgram& program, bool useDriverCache = true)
         {
             must(program.save(m_File));
@@ -173,14 +178,14 @@ void main(uint3 index : SV_DispatchThreadID)
     writeText(source, text);
     const auto include = root / "late/value.slangh";
     writeText(include, "static const uint factor = 3;\n");
+    ComputeProbe         probe(root);
     ShaderCompileOptions options;
-    // The probe runs the program on this build's device, so it is compiled for that device.
-    options.profile            = vultra::shaderProfile(vultra::Device::defaultGraphicsAPI());
+    // The probe runs the program on its device, so it is compiled for that device.
+    options.profile            = vultra::shaderProfile(probe.graphicsAPI());
     options.entries            = {{"main", VriShaderStage_Compute}};
     options.includeDirectories = {root / "early", root / "late"};
     options.linkSources        = {{"choices", "export static const uint choice = 5;"}};
     auto         compiler      = must(ShaderCompiler::create(root / "cache"));
-    ComputeProbe probe(root);
     const auto   first = must(compiler.compile(source, options));
     const auto   cold  = compiler.lastCompileStatistics();
     require(!cold.programCacheHit && !cold.moduleCacheHit && probe.run(first) == 15, "Cold shader output is incorrect");

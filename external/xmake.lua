@@ -27,12 +27,13 @@ end
 if features.platform then
     includes("vri")
 
-    local api = get_config("libvultra_graphics_api") or (is_plat("wasm") and "webgpu" or "vulkan")
+    -- VRI builds every backend of this configuration into one library; the device picks one at run time.
     local vri_dir = get_config("libvultra_vri_dir")
     add_requires((vri_dir and vri_dir ~= "") and "vri-vultra-local" or "vri v0.2.2", {
         alias = "vri",
-        configs = {vulkan = api == "vulkan", gl = api == "webgl2", wgpu = api == "webgpu",
-                   d3d12 = api == "d3d12", metal = api == "metal"}
+        configs = {vulkan = vultraHasGraphicsApi("vulkan"), gl = vultraHasGraphicsApi("opengl"),
+                   wgpu = vultraHasGraphicsApi("webgpu"), d3d12 = vultraHasGraphicsApi("d3d12"),
+                   metal = vultraHasGraphicsApi("metal")}
     })
 end
 
@@ -41,7 +42,7 @@ if features.shader or features.assets then
 end
 if shader_compiler then
     -- D3D12 shaders are DXIL, which Slang produces through the DirectX Shader Compiler.
-    local dxil = get_config("libvultra_graphics_api") == "d3d12"
+    local dxil = vultraHasGraphicsApi("d3d12")
     add_requires("slang-static 2026.11", {configs = {dxil = dxil}})
     -- The static Slang build has no SPIRV-Opt module; the shader compiler runs the optimizer itself.
     add_requires("spirv-tools 1.4.309+0")

@@ -1,5 +1,7 @@
 -- The library may be a subproject: its sources are next to this script, the pack goes to the project build.
 local library_root = path.directory(os.scriptdir())
+-- The graphics APIs the embedded archive is cooked for.
+local built_apis = table.concat(vultraGraphicsApis() or {}, ",")
 
 target("vultra-builtin-pack")
     set_kind("phony")
@@ -17,9 +19,9 @@ target("vultra-builtin-pack")
                                  os.files(path.join(library_root, "build", "sdk", "**")),
                                  {pack:targetfile()})
         table.sort(files)
-        -- Configurations of one checkout share the embedded archive; its shaders are compiled for one graphics
-        -- API, recorded next to it, so a build for another API cooks it again.
-        local api = get_config("libvultra_graphics_api")
+        -- Configurations of one checkout share the embedded archive; its shaders are compiled for the graphics APIs
+        -- of the build, recorded next to it, so a build for other APIs cooks it again.
+        local api = built_apis
         local stamp = output .. ".api"
         depend.on_changed(function ()
             local candidate = output .. ".new"
