@@ -4,7 +4,9 @@
 
 #include <vultra/gpu/image_readback.hpp>
 #include <vultra/render/forward_path.hpp>
+#include <vultra/render/tone_mapping_pass.hpp>
 
+#include <array>
 #include <cmath>
 #include <memory>
 #include <span>
@@ -39,8 +41,17 @@ namespace support
             vultra::RenderGraph::Resource depth;
         };
 
-        ForwardFixture(vultra::Device& device, vultra::GpuScene& scene, vultra::Environment& environment) :
-            path(must(vultra::createForwardPath(device))),
+        // `materialShaders` holds forward.vshaderc cooked with a vultra.materials of more types, or is null.
+        ForwardFixture(vultra::Device&            device,
+                       vultra::GpuScene&          scene,
+                       vultra::Environment&       environment,
+                       const vultra::AssetSource* materialShaders = nullptr) :
+            path(must(vultra::RenderPath::create(
+                device,
+                vultra::forwardPathDesc(),
+                std::array {vultra::meshStage(),
+                            vultra::forwardShadingStage(device.graphicsAPI(), materialShaders),
+                            vultra::toneMappingStage()}))),
             shading(static_cast<vultra::ForwardShadingStage*>(path->stage("shading"))),
             scene(scene),
             environment(environment)
