@@ -158,6 +158,37 @@ namespace vultra
         return pipeline;
     }
 
+    std::expected<ShaderProgram, Error>
+    ShaderPipeline::loadProgram(Device&                            device,
+                                const std::filesystem::path&       file,
+                                std::vector<ShaderEntry>           entries,
+                                std::vector<std::filesystem::path> includeDirectories)
+    {
+        ShaderCompileOptions options;
+        options.entries            = std::move(entries);
+        options.includeDirectories = std::move(includeDirectories);
+        options.profile            = shaderProfile(device.graphicsAPI());
+        auto resolved              = detail::absolutePath(file);
+        if (!resolved)
+        {
+            return std::unexpected(resolved.error());
+        }
+        std::error_code status;
+        if (resolved->extension() == ".slang" && std::filesystem::exists(*resolved, status))
+        {
+#ifdef VULTRA_WITH_SHADER_COMPILER
+            return ShaderProgram::compile(*resolved, options);
+#else
+            return makeError("This build loads cooked .vshaderc programs; compile Slang on the host");
+#endif
+        }
+        if (resolved->extension() == ".slang")
+        {
+            resolved->replace_extension(".vshaderc");
+        }
+        return ShaderProgram::load(*resolved, options.profile);
+    }
+
     ShaderPipeline::~ShaderPipeline()
     {
 #ifdef VULTRA_WITH_SHADER_COMPILER
@@ -226,7 +257,7 @@ namespace vultra
         {
 #ifdef VULTRA_WITH_SHADER_COMPILER
             program = m_Compiler ? m_Compiler->compile(m_File, m_CompileOptions) :
-                                 ShaderProgram::load(m_File, m_CompileOptions.profile);
+                                   ShaderProgram::load(m_File, m_CompileOptions.profile);
 #else
             program = ShaderProgram::load(m_File, m_CompileOptions.profile);
 #endif

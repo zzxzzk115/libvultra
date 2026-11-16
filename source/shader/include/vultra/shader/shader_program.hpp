@@ -268,5 +268,8 @@ namespace vultra
         [[nodiscard]] std::expected<std::vector<VriShaderDesc>, Error>
         descriptors(std::span<const ShaderEntry> entries) const;
         [[nodiscard]] std::expected<std::vector<ShaderResourceBinding>, Error> resourceBindings() const;
+        // Whether the code carries source and line information for GPU debuggers: SPIR-V's non-semantic debug
+        // instructions or a DXIL container's debug part. WGSL never does.
+        bool hasDebugInfo() const;
     };
 } // namespace vultra

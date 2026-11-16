@@ -242,12 +242,29 @@ namespace vultra
         return result;
     }
 
+    bool ShaderProgram::hasDebugInfo() const
+    {
+        if (profile == "wgsl")
+        {
+            return false;
+        }
+        // SPIR-V names its debug instruction set; a DXIL container lists its debug DXIL as an "ILDB" part.
+        const std::string_view marker = isD3DProfile(profile) ? "ILDB" : "NonSemantic.Shader.DebugInfo";
+        return std::ranges::any_of(shaders,
+                                   [marker](const CompiledShader& shader)
+                                   {
+                                       const std::string_view bytes(reinterpret_cast<const char*>(shader.words.data()),
+                                                                    shader.words.size() * sizeof(uint32_t));
+                                       return bytes.find(marker) != std::string_view::npos;
+                                   });
+    }
+
     std::expected<void, Error> ShaderProgram::save(const std::filesystem::path& file) const
     {
         return save(file, std::span(this, 1));
     }
 
-    std::expected<void, Error> ShaderProgram::save(const std::filesystem::path& file,
+    std::expected<void, Error> ShaderProgram::save(const std::filesystem::path&   file,
                                                    std::span<const ShaderProgram> targets)
     {
         if (targets.empty() || targets.size() > 16)
@@ -282,8 +299,8 @@ namespace vultra
         return programsFromArchive(*document, file);
     }
 
-    std::expected<std::vector<ShaderProgram>, Error>
-    ShaderProgram::loadTargets(std::span<const std::byte> bytes, const std::filesystem::path& identity)
+    std::expected<std::vector<ShaderProgram>, Error> ShaderProgram::loadTargets(std::span<const std::byte>   bytes,
+                                                                                const std::filesystem::path& identity)
     {
         const auto document = detail::readShaderArchive(bytes, identity);
         if (!document)
@@ -304,8 +321,7 @@ namespace vultra
         return onlyTarget(loadTargets(bytes, identity), identity);
     }
 
-    std::expected<ShaderProgram, Error> ShaderProgram::load(const std::filesystem::path& file,
-                                                            std::string_view             profile)
+    std::expected<ShaderProgram, Error> ShaderProgram::load(const std::filesystem::path& file, std::string_view profile)
     {
         return selectTarget(loadTargets(file), profile, file);
     }
