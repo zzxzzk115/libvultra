@@ -1,6 +1,6 @@
 # Handoff
 
-Dated snapshot: 2026-11-15, branch `dev-slim`. Verify claims against the code before relying on them.
+Dated snapshot: 2026-11-16, branch `dev-slim`. Verify claims against the code before relying on them.
 
 This library is the kernel of a larger restructuring whose steps are called M0 to M5. They are described, with
 their state and the steps to verify the latest one, in
@@ -63,6 +63,14 @@ Added:
   textures as path inputs; the builtin pack carries the sources of `vultra.material` (`extractBuiltinPack()`);
   RG16F readback. In Vultra-CLI, `[VultraDraw]` passes and render paths offered by package manifests; in
   Vultra-Packages, `vultra.render` with `vultra.deferred` as pass shaders.
+- M8 part c (2026-11-16): material types. `IVultraMaterial` and `vultra.openpbr` in `vultra.material`; the builtin
+  `vultra.materials` (dispatch over the types a program knows; only `vultra.openpbr` here); `scene.materials` and
+  `scene.material_data` from `vultra.mesh`; push constants are now the draw's indices (`MaterialDraw`) and
+  OpenPBR parameters are read from set 1; `GpuScene::setMaterialType`, `writeMaterials()` every frame from
+  `RenderPath::prepare`; `forwardShadingStage(api, materialShaders)`; `kSceneSurfaceId` (R32_UINT material number,
+  revised from RG32_UINT by the owner because VRI 0.2.2's WebGPU backend maps no RG32_UINT texture);
+  `vultraSampleLight`. The builtin pack ships `passes/forward.slang`'s source so a host cooks it with its types.
+  Templates of Vultra-CLI render byte-identically before and after on Vulkan, D3D12 and WebGPU.
 - Slang user-attribute and field-initializer reflection, stored in cooked programs.
 - A render graph execution plan with batches per queue, async compute through `execute(Frame&)`, and
   `writeDot()`.
