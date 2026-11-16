@@ -156,7 +156,7 @@ namespace vultra::detail
             for (const auto& offset : document.at("offsets"))
             {
                 const auto offsetKind = offset.at("kind").get<uint32_t>();
-                if (offsetKind > uint32_t(ShaderOffsetKind::ePushConstant) || !offsetKinds.insert(offsetKind).second)
+                if (offsetKind > uint32_t(ShaderOffsetKind::eSamplerRegister) || !offsetKinds.insert(offsetKind).second)
                 {
                     return makeError("Invalid cooked shader layout offset");
                 }

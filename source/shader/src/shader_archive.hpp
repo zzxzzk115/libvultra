@@ -20,6 +20,9 @@ namespace vultra::detail
                                                                    const VriDeviceDesc& device);
     [[nodiscard]] std::expected<ShaderParameter, Error>
     reflectShaderParameters(slang::VariableLayoutReflection* globals);
+    // Copies the push-constant offsets of a SPIR-V layout of the same program into a D3D layout, where Slang lays
+    // out [[vk::push_constant]] blocks as ordinary constant buffers.
+    [[nodiscard]] std::expected<void, Error> markPushConstants(ShaderParameter& target, const ShaderParameter& spirv);
     [[nodiscard]] std::expected<std::vector<ShaderAttribute>, Error>
                                                        reflectShaderAttributes(slang::FunctionReflection* function);
     nlohmann::json                                     encodeShaderProgram(const ShaderProgram& program);

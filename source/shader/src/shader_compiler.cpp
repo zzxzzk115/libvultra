@@ -12,6 +12,7 @@
 #include <xxhash.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <chrono>
 #include <cstring>
@@ -344,6 +345,11 @@ namespace vultra
                 return makeError("Unsupported shader profile: {}", program.profile);
             }
         }
+        // D3D layouts give [[vk::push_constant]] blocks no category of their own, so a D3D session also lays the
+        // program out for SPIR-V, only to tell push constants apart; it emits no SPIR-V.
+        std::array<slang::TargetDesc, 2> targets {target, {}};
+        targets[1].format  = SLANG_SPIRV;
+        targets[1].profile = global->findProfile("spirv_1_5");
         std::vector<slang::CompilerOptionEntry> options;
         if (!wgsl && !d3d)
         {
@@ -434,8 +440,8 @@ namespace vultra
         }
         slang::SessionDesc desc {};
         desc.fileSystem               = fileSystem;
-        desc.targets                  = &target;
-        desc.targetCount              = 1;
+        desc.targets                  = targets.data();
+        desc.targetCount              = d3d ? 2 : 1;
         desc.searchPaths              = searchPaths.data();
         desc.searchPathCount          = SlangInt(searchPaths.size());
         desc.preprocessorMacros       = macros.data();
@@ -740,6 +746,26 @@ namespace vultra
         if (!parameters)
         {
             return std::unexpected(parameters.error());
+        }
+        if (d3d)
+        {
+            diagnostics.setNull();
+            auto* spirvLayout = linked->getLayout(1, diagnostics.writeRef());
+            if (auto reflected =
+                    diagnose(spirvLayout ? SLANG_OK : SLANG_FAIL, diagnostics, "Reflect push constants for D3D");
+                !reflected)
+            {
+                return std::unexpected(reflected.error());
+            }
+            auto spirvParameters = detail::reflectShaderParameters(spirvLayout->getGlobalParamsVarLayout());
+            if (!spirvParameters)
+            {
+                return std::unexpected(spirvParameters.error());
+            }
+            if (auto marked = detail::markPushConstants(*parameters, *spirvParameters); !marked)
+            {
+                return std::unexpected(marked.error());
+            }
         }
         program.parameters             = std::move(*parameters);
         statistics.codegenMilliseconds = milliseconds(codegenStarted);

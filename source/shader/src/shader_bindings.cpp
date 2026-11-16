@@ -1,6 +1,7 @@
 #include <vultra/shader/shader_program.hpp>
 
 #include <algorithm>
+#include <array>
 
 namespace vultra
 {
@@ -15,22 +16,63 @@ namespace vultra
                                        });
         }
 
+        // D3D targets number registers per class (b, t, u, s), each in its own register space. Other targets
+        // report descriptor slots instead and leave these at zero.
+        constexpr std::array kRegisterKinds {ShaderOffsetKind::eConstantBufferRegister,
+                                             ShaderOffsetKind::eShaderResourceRegister,
+                                             ShaderOffsetKind::eUnorderedAccessRegister,
+                                             ShaderOffsetKind::eSamplerRegister};
+
+        struct Registers
+        {
+            std::array<uint64_t, kRegisterKinds.size()> index {};
+            std::array<uint64_t, kRegisterKinds.size()> space {};
+
+            void add(const ShaderParameter& node)
+            {
+                for (size_t kind = 0; kind < kRegisterKinds.size(); ++kind)
+                {
+                    index[kind] += node.offset(kRegisterKinds[kind]);
+                    space[kind] += node.space(kRegisterKinds[kind]);
+                }
+            }
+        };
+
+        size_t registerClass(VriDescriptorType type)
+        {
+            switch (type)
+            {
+                case VriDescriptorType_ConstantBuffer:
+                    return 0;
+                case VriDescriptorType_StorageTexture:
+                case VriDescriptorType_StorageBuffer:
+                    return 2;
+                case VriDescriptorType_Sampler:
+                    return 3;
+                default:
+                    return 1;
+            }
+        }
+
         std::expected<void, Error> collectBindings(const ShaderParameter&              node,
                                                    std::string                         name,
                                                    uint64_t                            set,
                                                    uint64_t                            binding,
+                                                   Registers                           registers,
                                                    uint64_t                            count,
                                                    std::vector<ShaderResourceBinding>& output)
         {
             if (node.kind == ShaderParameterKind::eParameterBlock)
             {
                 set += node.offset(ShaderOffsetKind::eRegisterSpace);
-                binding = 0; // Bindings are relative to the deepest ParameterBlock.
+                binding   = 0; // Bindings are relative to the deepest ParameterBlock.
+                registers = {};
             }
             else
             {
                 binding += node.offset(ShaderOffsetKind::eDescriptor);
                 set += node.space(ShaderOffsetKind::eDescriptor);
+                registers.add(node);
             }
             if (node.kind == ShaderParameterKind::eConstantBuffer || node.kind == ShaderParameterKind::eParameterBlock)
             {
@@ -44,21 +86,24 @@ namespace vultra
                 {
                     const bool push = hasOffset(node, ShaderOffsetKind::ePushConstant) ||
                                       hasOffset(*container, ShaderOffsetKind::ePushConstant);
-                    if (set > UINT32_MAX || binding + container->offset(ShaderOffsetKind::eDescriptor) > UINT32_MAX ||
-                        count > UINT32_MAX)
+                    const uint64_t slot = binding + container->offset(ShaderOffsetKind::eDescriptor) +
+                                          registers.index[0] +
+                                          container->offset(ShaderOffsetKind::eConstantBufferRegister);
+                    const uint64_t space = set + registers.space[0];
+                    if (space > UINT32_MAX || slot > UINT32_MAX || count > UINT32_MAX)
                     {
                         return makeError("Shader binding exceeds VRI limits: {}", name);
                     }
                     output.push_back({name,
                                       VriDescriptorType_ConstantBuffer,
-                                      uint32_t(set),
-                                      uint32_t(binding + container->offset(ShaderOffsetKind::eDescriptor)),
+                                      uint32_t(space),
+                                      uint32_t(slot),
                                       uint32_t(count),
                                       element->size,
                                       VriTextureViewType_2D,
                                       push});
                 }
-                return collectBindings(*element, std::move(name), set, binding, count, output);
+                return collectBindings(*element, std::move(name), set, binding, registers, count, output);
             }
             else if (node.kind == ShaderParameterKind::eArray)
             {
@@ -66,14 +111,21 @@ namespace vultra
                 {
                     return makeError("Material passes require bounded resource arrays: {}", name);
                 }
-                return collectBindings(node.fields.front(), std::move(name), set, binding, count * node.count, output);
+                return collectBindings(node.fields.front(),
+                                       std::move(name),
+                                       set,
+                                       binding,
+                                       registers,
+                                       count * node.count,
+                                       output);
             }
             else if (node.kind == ShaderParameterKind::eStruct)
             {
                 for (const auto& field : node.fields)
                 {
                     auto child = name.empty() ? field.name : name + "." + field.name;
-                    if (auto collected = collectBindings(field, std::move(child), set, binding, count, output);
+                    if (auto collected =
+                            collectBindings(field, std::move(child), set, binding, registers, count, output);
                         !collected)
                     {
                         return collected;
@@ -91,14 +143,17 @@ namespace vultra
                     }
                     type = *node.descriptorType;
                 }
-                if (set > UINT32_MAX || binding > UINT32_MAX || count > 65536)
+                const auto     registerKind = registerClass(type);
+                const uint64_t slot         = binding + registers.index[registerKind];
+                const uint64_t space        = set + registers.space[registerKind];
+                if (space > UINT32_MAX || slot > UINT32_MAX || count > 65536)
                 {
                     return makeError("Shader binding exceeds VRI limits: {}", name);
                 }
                 output.push_back({std::move(name),
                                   type,
-                                  uint32_t(set),
-                                  uint32_t(binding),
+                                  uint32_t(space),
+                                  uint32_t(slot),
                                   uint32_t(count),
                                   0,
                                   node.viewType,
@@ -113,7 +168,7 @@ namespace vultra
     std::expected<std::vector<ShaderResourceBinding>, Error> ShaderProgram::resourceBindings() const
     {
         std::vector<ShaderResourceBinding> result;
-        if (auto collected = collectBindings(parameters, "", 0, 0, 1, result); !collected)
+        if (auto collected = collectBindings(parameters, "", 0, 0, {}, 1, result); !collected)
         {
             return std::unexpected(collected.error());
         }

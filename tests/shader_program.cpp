@@ -13,6 +13,7 @@
 #include <fstream>
 #include <iostream>
 #include <thread>
+#include <tuple>
 
 namespace
 {
@@ -89,6 +90,62 @@ void computeMain()
                 require(binding != bindings.end() && binding->type == VriDescriptorType_Texture &&
                             binding->viewType == view,
                         "Compiler/cooked reflection lost a VRI texture dimension");
+            }
+        }
+    }
+
+    // Bindings as the device's API sees them: D3D registers per class (b, t, u, s), descriptor slots elsewhere, and
+    // push constants told apart on every target, whose layouts the host builds from this reflection.
+    void deviceBindings(const std::filesystem::path& root)
+    {
+        using namespace vultra;
+        ShaderCompileOptions options;
+        options.profile    = shaderProfile(Device::defaultGraphicsAPI());
+        const auto program = must(ShaderProgram::compileSource(root / "device_bindings.slang",
+                                                               R"(
+struct Parameters
+{
+    float gain;
+};
+[[vk::push_constant]] ConstantBuffer<Parameters> parameters;
+ConstantBuffer<Parameters> constants;
+Texture2D<float4> image;
+StructuredBuffer<float4> elements;
+[format("rgba16f")] RWTexture2D<float4> written;
+RWStructuredBuffer<float4> output;
+SamplerState filter;
+[shader("compute")]
+[numthreads(1, 1, 1)]
+void computeMain()
+{
+    written[uint2(0, 0)] = image.SampleLevel(filter, float2(0.5), 0) * elements[0] * constants.gain;
+    output[0]            = float4(parameters.gain);
+}
+)",
+                                                               options));
+        const auto file    = root / "device_bindings.vshaderc";
+        must(program.save(file));
+        const auto restored = must(ShaderProgram::load(file));
+        const bool d3d      = isD3DProfile(program.profile);
+        // Name, slot on D3D, slot elsewhere.
+        const std::array expected {std::tuple {"constants", 1u, 0u},
+                                   std::tuple {"image", 0u, 1u},
+                                   std::tuple {"elements", 1u, 2u},
+                                   std::tuple {"written", 0u, 3u},
+                                   std::tuple {"output", 1u, 4u},
+                                   std::tuple {"filter", 0u, 5u}};
+        for (const auto* candidate : {&program, &restored})
+        {
+            const auto bindings = must(candidate->resourceBindings());
+            const auto push     = std::ranges::find(bindings, "parameters", &ShaderResourceBinding::name);
+            require(push != bindings.end() && push->pushConstant && push->set == 0 && push->binding == 0,
+                    "Reflection lost the push constants or their register");
+            for (const auto& [name, d3dSlot, slot] : expected)
+            {
+                const auto binding = std::ranges::find(bindings, name, &ShaderResourceBinding::name);
+                require(binding != bindings.end() && !binding->pushConstant && binding->set == 0 &&
+                            binding->binding == (d3d ? d3dSlot : slot),
+                        std::string("Reflection placed ") + name + " at another register or slot");
             }
         }
     }
@@ -306,6 +363,7 @@ int main()
                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     fs::create_directories(root / "source");
     resourceViews(root);
+    deviceBindings(root);
     userAttributes(root);
     compileModes(root);
     watchedReload(root);
