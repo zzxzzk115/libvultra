@@ -219,7 +219,8 @@ nonempty canvas at construction"; a reload worked.
 - Not covered: `xr` stays Vulkan-only; Vultra-Packages shaders do not pin D3D12 registers; no other GPU, WARP or
   DXC version was tried.
 
-2026-11-16, branch `feat/d3d12-reflection` (for the Vultra-CLI and Vultra-Packages ports, branches `feat/d3d12`):
+2026-11-16, branch `feat/multi-backend` (with Vultra-CLI and Vultra-Packages branches of the same name; started as
+the D3D12 port of those two, then reframed by the owner into backends chosen at run time):
 
 - Reflection of DXIL programs reported binding 0 for every resource and no push constants. It now records the
   D3D register classes (`ShaderOffsetKind::eConstantBufferRegister` to `eSamplerRegister`) and marks push
@@ -230,8 +231,19 @@ nonempty canvas at construction"; a reload worked.
 - The IBL targets are created with the opaque-black clear value their passes clear to; this removed the D3D12
   debug-layer warning from every host run. Other kernel tests still clear targets to values they were not
   created with and log that warning (debugdraw, display, graph-*, gui-*, render-path, shader-program).
-- Verified: 34/34 on D3D12 and Vulkan; cooked SPIR-V of the builtin pack and of a research pass byte-identical to
-  `dev-slim`.
+- Several backends per build (`libvultra_graphics_apis`), chosen at run time: `Device::graphicsAPIs()`,
+  `Device::create()` over a list or automatically, `VULTRA_GRAPHICS_API`, `AppConfig::graphicsAPIs`. The owner's
+  decisions are D50–D53 in vultra-plans (v45). OpenGL is accepted on the Web only; the GL milestone wires it.
+- One `.vshaderc` holds a program per target (`load(file, profile)`, `loadTargets`, `save(file, targets)`, `cook`
+  with profiles); the builtin pack carries every target of the build. `shaderSetLayout()` lays out a set from
+  reflection for an API; `ShaderPipeline::loadProgram()` serves callers that lay out before building.
+  `ShaderProgram::hasDebugInfo()` answers per target.
+- Building with `d3d12` (the Windows default) needs `dxcompiler.dll` on `PATH` at build time too: the builtin pack
+  is cooked for DXIL.
+- Verified with one build of `vulkan,d3d12,webgpu`: 34/34 on each API (D3D12 with the clear-value warnings above);
+  the SPIR-V and WGSL of the builtin pack equal those of single-API `dev-slim` builds byte for byte.
+- Seen, not fixed: `vultra.deferred` (Vultra-Packages) logs one WebGPU validation error ("Error matching
+  ShaderStages(FRAGMENT) shader requirements against the pipeline"), also with the unchanged WebGPU-only build.
 
 ## Local state
 
