@@ -262,7 +262,11 @@ namespace vultra
                     std::pair {SLANG_PARAMETER_CATEGORY_UNIFORM, ShaderOffsetKind::eUniform},
                     std::pair {SLANG_PARAMETER_CATEGORY_DESCRIPTOR_TABLE_SLOT, ShaderOffsetKind::eDescriptor},
                     std::pair {SLANG_PARAMETER_CATEGORY_SUB_ELEMENT_REGISTER_SPACE, ShaderOffsetKind::eRegisterSpace},
-                    std::pair {SLANG_PARAMETER_CATEGORY_PUSH_CONSTANT_BUFFER, ShaderOffsetKind::ePushConstant}};
+                    std::pair {SLANG_PARAMETER_CATEGORY_PUSH_CONSTANT_BUFFER, ShaderOffsetKind::ePushConstant},
+                    std::pair {SLANG_PARAMETER_CATEGORY_CONSTANT_BUFFER, ShaderOffsetKind::eConstantBufferRegister},
+                    std::pair {SLANG_PARAMETER_CATEGORY_SHADER_RESOURCE, ShaderOffsetKind::eShaderResourceRegister},
+                    std::pair {SLANG_PARAMETER_CATEGORY_UNORDERED_ACCESS, ShaderOffsetKind::eUnorderedAccessRegister},
+                    std::pair {SLANG_PARAMETER_CATEGORY_SAMPLER_STATE, ShaderOffsetKind::eSamplerRegister}};
                 for (uint32_t index = 0; index < type->getCategoryCount(); ++index)
                 {
                     for (const auto& [category, kind] : categories)
@@ -362,6 +366,29 @@ namespace vultra
         std::expected<ShaderParameter, Error> reflectShaderParameters(slang::VariableLayoutReflection* globals)
         {
             return reflectType(globals->getTypeLayout(), globals, "$globals", 0);
+        }
+
+        std::expected<void, Error> markPushConstants(ShaderParameter& target, const ShaderParameter& spirv)
+        {
+            if (target.name != spirv.name || target.fields.size() != spirv.fields.size())
+            {
+                return makeError("SPIR-V and D3D layouts of a shader differ at {}", target.name);
+            }
+            for (const auto& offset : spirv.offsets)
+            {
+                if (offset.kind == ShaderOffsetKind::ePushConstant)
+                {
+                    target.offsets.push_back(offset);
+                }
+            }
+            for (size_t index = 0; index < target.fields.size(); ++index)
+            {
+                if (auto marked = markPushConstants(target.fields[index], spirv.fields[index]); !marked)
+                {
+                    return marked;
+                }
+            }
+            return {};
         }
     } // namespace detail
 } // namespace vultra

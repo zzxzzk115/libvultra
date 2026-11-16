@@ -85,7 +85,12 @@ namespace vultra
         eUniform,
         eDescriptor,
         eRegisterSpace,
-        ePushConstant
+        ePushConstant,
+        // D3D targets: the register within its class (b, t, u, s) and its register space.
+        eConstantBufferRegister,
+        eShaderResourceRegister,
+        eUnorderedAccessRegister,
+        eSamplerRegister
     };
 
     struct ShaderParameterOffset
