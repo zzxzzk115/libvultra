@@ -193,8 +193,8 @@ namespace vultra
             }
             files.emplace_back(*entry, outputFile);
         }
-        // The sources of vultra.material and what it includes, so that programs compile shaders importing it with
-        // builtin/shaders and external of the extracted pack as include roots.
+        // The sources of vultra.material, vultra.materials and what they include, so that programs compile shaders
+        // importing them with builtin/shaders and external of the extracted pack as include roots.
         for (const auto* directory :
              {"builtin/shaders/vultra", "builtin/shaders/lib", "builtin/shaders/resources", "external/openpbr"})
         {
@@ -218,6 +218,13 @@ namespace vultra
                 files.push_back(std::move(*file));
             }
         }
+        // Forward shading's source, so that a host cooks it with a vultra.materials of its own types.
+        auto forward = sourceFile(*engine, "builtin/shaders/passes/forward.slang");
+        if (!forward)
+        {
+            return std::unexpected(forward.error());
+        }
+        files.push_back(std::move(*forward));
         // Ship upstream attribution with the compiled implementation and the sources.
         std::vector<std::string> attributions {"external/vrf_fbx_license.txt",
                                                "external/flip/LICENSE",

@@ -21,9 +21,12 @@ namespace vultra
     StageType meshStage();
 
     // "vultra.forward_shading", a view stage for the slot shading. Reads the geometry buffers and scene.lights and
-    // provides scene.hdr and scene.depth: one opaque OpenPBR forward pass over a skybox, with analytic lights and
+    // provides scene.hdr and scene.depth: one opaque forward pass over a skybox, with analytic lights and
     // image-based lighting. It provides the G-buffer layers of `api` (gbufferLayers) on request.
-    StageType forwardShadingStage(VriGraphicsAPI api);
+    // `materialShaders`, when given, holds builtin/shaders/passes/forward.vshaderc cooked with a vultra.materials
+    // that knows more types than vultra.openpbr; it must outlive the stages. Without it the stage evaluates the
+    // builtin vultra.materials, which knows only vultra.openpbr.
+    StageType forwardShadingStage(VriGraphicsAPI api, const AssetSource* materialShaders = nullptr);
 
     RenderPathDesc forwardPathDesc();
 
@@ -49,7 +52,7 @@ namespace vultra
         // A supplied cooked shader source must outlive the stage and its shader reloads. Graph passes and
         // pipeline builders keep the stage's address, so it lives behind a unique_ptr.
         [[nodiscard]] static std::expected<std::unique_ptr<ForwardShadingStage>, Error>
-        create(Device& device, const AssetSource* shaders = nullptr);
+        create(Device& device, const AssetSource* shaders = nullptr, const AssetSource* materialShaders = nullptr);
         ~ForwardShadingStage() override;
         ForwardShadingStage(const ForwardShadingStage&)            = delete;
         ForwardShadingStage& operator=(const ForwardShadingStage&) = delete;
@@ -88,6 +91,7 @@ namespace vultra
         VriPipelineLayout*       m_Layout             = nullptr;
         VriPipelineLayout*       m_SkyLayout          = nullptr; // Set 0 only.
         const AssetSource*       m_Shaders            = nullptr; // Cooked builtin shaders, or null.
+        const AssetSource*       m_MaterialShaders    = nullptr; // forward.vshaderc with the project's types, or null.
         std::vector<View>        m_Views; // Kept across graphs; a graph uses the first views.size().
         // Per-scene state, rebuilt by addPasses() for view 0.
         bool                            m_GBuffer       = false; // Whether this graph writes the G-buffer layers.

@@ -1,5 +1,6 @@
 import vultra.gbuffer;
 import vultra.material;
+import vultra.materials;
 
 #include "resources/frame_block.slangh"
 #include "lib/surface_lighting.slangh"
@@ -9,10 +10,13 @@ import vultra.material;
     return vultraTransformVertex(input, primitiveTransforms[material.instance.x], frame.viewProjection);
 }
 
-// The material's surface with the frame's roughness and metalness overrides; negative overrides keep it.
-VultraSurface forwardSurface(SurfaceVertex input, bool frontFace, float3 baseColor)
+// The bound material's surface with the frame's roughness and metalness overrides; negative overrides keep it.
+VultraSurface forwardSurface(SurfaceVertex input, bool frontFace)
 {
-    VultraSurface surface = vultraSampleSurface(input, frontFace, baseColor);
+    VultraSurfaceInput surfaceInput;
+    surfaceInput.vertex    = input;
+    surfaceInput.frontFace = frontFace;
+    VultraSurface surface  = vultraMaterialSurface(surfaceInput);
     if (frame.overrides.x >= 0)
     {
         surface.roughness = clamp(frame.overrides.x, 0.03, 1);
@@ -26,12 +30,7 @@ VultraSurface forwardSurface(SurfaceVertex input, bool frontFace, float3 baseCol
 
 [shader("fragment")] float4 fragmentMain(SurfaceVertex input, bool frontFace : SV_IsFrontFace) : SV_Target
 {
-    float3 baseColor = vultraBaseColor(input.uv, input.color).rgb;
-    if (material.meshlets.w != 0)
-    {
-        return float4(input.color.rgb, 1);
-    }
-    return float4(shadeSurface(forwardSurface(input, frontFace, baseColor)), 1);
+    return float4(shadeSurface(forwardSurface(input, frontFace)), 1);
 }
 
 // The G-buffer variant: the same shading into scene.hdr, plus the surface layers and motion.
@@ -69,8 +68,7 @@ struct GBufferOutput
 
 [shader("fragment")] GBufferOutput fragmentGBuffer(GBufferVertex input, bool frontFace : SV_IsFrontFace)
 {
-    float3        baseColor = vultraBaseColor(input.surface.uv, input.surface.color).rgb;
-    VultraSurface surface   = forwardSurface(input.surface, frontFace, baseColor);
+    VultraSurface surface = forwardSurface(input.surface, frontFace);
     GBufferOutput output;
     output.hdr      = float4(shadeSurface(surface), 1);
     output.normal   = vultraEncodeNormal(surface.normal);

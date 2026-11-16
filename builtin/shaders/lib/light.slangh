@@ -11,27 +11,42 @@ float3 vultraDirectionalLight(OpenPBR_PreparedBsdf bsdf, float3 toLight, float3 
     return openpbr_get_sum_of_diffuse_specular(response) * radiance;
 }
 
-// Reflected radiance of one light of the scene light buffer at `position`. Point and spot intensity follows
-// inverse-square falloff with a smooth finite-range cutoff.
-float3 vultraSceneLight(OpenPBR_PreparedBsdf bsdf, LightData light, float3 position)
+// Where one light of the scene light buffer arrives from at `position`, and how much of its color and intensity
+// reaches it. Point and spot intensity follows inverse-square falloff with a smooth finite-range cutoff.
+struct VultraLightSample
 {
-    float3 direction = light.directionKind.xyz;
-    float attenuation = 1;
-    uint kind = uint(light.directionKind.w);
+    float3 toLight;     // Unit direction towards the light.
+    float  attenuation; // Applies to the light's color times intensity.
+};
+
+VultraLightSample vultraSampleLight(LightData light, float3 position)
+{
+    VultraLightSample result;
+    result.toLight     = light.directionKind.xyz;
+    result.attenuation = 1;
+    uint kind          = uint(light.directionKind.w);
     if (kind != 0)
     {
-        float3 delta = light.positionRange.xyz - position;
-        float distanceSquared = max(dot(delta, delta), 1e-6);
-        float distance = sqrt(distanceSquared);
-        direction = delta / distance;
-        float cutoff = saturate(1 - pow(distance / light.positionRange.w, 4));
-        attenuation = cutoff * cutoff / distanceSquared;
+        float3 delta           = light.positionRange.xyz - position;
+        float  distanceSquared = max(dot(delta, delta), 1e-6);
+        float  distance        = sqrt(distanceSquared);
+        result.toLight         = delta / distance;
+        float cutoff           = saturate(1 - pow(distance / light.positionRange.w, 4));
+        result.attenuation     = cutoff * cutoff / distanceSquared;
         if (kind == 2)
         {
-            attenuation *= smoothstep(light.cones.y, light.cones.x, dot(direction, light.directionKind.xyz));
+            result.attenuation *=
+                smoothstep(light.cones.y, light.cones.x, dot(result.toLight, light.directionKind.xyz));
         }
     }
-    OpenPBR_DiffuseSpecular response = openpbr_eval(bsdf, direction);
-    return openpbr_get_sum_of_diffuse_specular(response) * light.colorIntensity.rgb *
-           light.colorIntensity.w * attenuation;
+    return result;
+}
+
+// Reflected radiance of one light of the scene light buffer at `position`.
+float3 vultraSceneLight(OpenPBR_PreparedBsdf bsdf, LightData light, float3 position)
+{
+    const VultraLightSample arrival  = vultraSampleLight(light, position);
+    OpenPBR_DiffuseSpecular response = openpbr_eval(bsdf, arrival.toLight);
+    return openpbr_get_sum_of_diffuse_specular(response) * light.colorIntensity.rgb * light.colorIntensity.w *
+           arrival.attenuation;
 }

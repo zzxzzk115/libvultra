@@ -18,9 +18,11 @@ SurfaceVertex vultraTransformVertex(MeshVertex input, PrimitiveTransform instanc
     return result;
 }
 
-// The surface the bound material gives an interpolated vertex; `baseColor` is vultraBaseColor().rgb.
+// The surface the bound vultra.openpbr material gives an interpolated vertex; `baseColor` is
+// vultraBaseColor().rgb.
 VultraSurface vultraSampleSurface(SurfaceVertex input, bool frontFace, float3 baseColor)
 {
+    const OpenPbrParameters parameters = vultraOpenPbrParameters();
     VultraSurface result;
     float faceSign = frontFace ? 1 : -1;
     float2 mr = metallicRoughnessTexture.Sample(metallicRoughnessSampler, input.uv).bg;
@@ -28,17 +30,17 @@ VultraSurface vultraSampleSurface(SurfaceVertex input, bool frontFace, float3 ba
     result.geometricNormal = normalize(input.normal) * faceSign;
     result.normal = surfaceNormal(input) * faceSign;
     result.baseColor = baseColor;
-    result.baseWeight = material.flags.y;
-    result.metallic = saturate(material.surface.x * mr.x);
-    result.roughness = clamp(material.surface.y * mr.y, 0.03, 1);
-    result.emission = emissionTexture.Sample(emissionSampler, input.uv).rgb * material.emission.rgb;
-    result.occlusion = lerp(1, occlusionTexture.Sample(occlusionSampler, input.uv).r, material.emission.w);
-    result.specularColor = material.specular.rgb * specularColorTexture.Sample(specularColorSampler, input.uv).rgb;
-    result.specularWeight = material.coat.w * specularTexture.Sample(specularSampler, input.uv).a;
-    result.specularIor = material.surface.z;
-    result.coatWeight = material.coat.x;
-    result.coatRoughness = material.coat.y;
-    result.coatIor = material.coat.z;
-    result.baseDiffuseRoughness = material.specular.w;
+    result.baseWeight = parameters.flags.y;
+    result.metallic = saturate(parameters.surface.x * mr.x);
+    result.roughness = clamp(parameters.surface.y * mr.y, 0.03, 1);
+    result.emission = emissionTexture.Sample(emissionSampler, input.uv).rgb * parameters.emission.rgb;
+    result.occlusion = lerp(1, occlusionTexture.Sample(occlusionSampler, input.uv).r, parameters.emission.w);
+    result.specularColor = parameters.specular.rgb * specularColorTexture.Sample(specularColorSampler, input.uv).rgb;
+    result.specularWeight = parameters.coat.w * specularTexture.Sample(specularSampler, input.uv).a;
+    result.specularIor = parameters.surface.z;
+    result.coatWeight = parameters.coat.x;
+    result.coatRoughness = parameters.coat.y;
+    result.coatIor = parameters.coat.z;
+    result.baseDiffuseRoughness = parameters.specular.w;
     return result;
 }

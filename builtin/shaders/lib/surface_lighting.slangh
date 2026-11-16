@@ -1,20 +1,45 @@
 #pragma once
 
-// Forward shading of one surface with the frame's lights and environment. Include after frame_block.slangh.
+// Forward shading of one surface of the bound material with the frame's lights and environment. Include after
+// frame_block.slangh and `import vultra.materials;`. A type whose standard layers are not enough reflects the
+// lights through its shade(); the constant fill, the environment light and the debug views use the layers.
 float3 shadeSurface(VultraSurface sample)
 {
-    float3 view = normalize(frame.cameraPosition.xyz - sample.worldPosition);
-    VultraBsdf bsdf = vultraPrepareBsdf(sample, view);
+    float3 view     = normalize(frame.cameraPosition.xyz - sample.worldPosition);
     float3 radiance = frame.lightColor.rgb * frame.lightDirection.w;
-    float3 result   = vultraDirectionalLight(bsdf, frame.lightDirection.xyz, radiance) + sample.emission;
-    // Explicit constant fill for raster experiments; it is neither IBL nor shadowed direct light.
-    result += frame.ambientColor.rgb * sample.baseColor * sample.occlusion;
-    for (uint i = 0; i < uint(frame.lightConfig.x); ++i)
+    float3 result;
+    if (vultraMaterialStandard(material.instance.z))
     {
-        // The main directional light is evaluated above through the frame's light fields.
-        if (int(i) != int(frame.lightConfig.y))
+        VultraBsdf bsdf = vultraPrepareBsdf(sample, view);
+        result          = vultraDirectionalLight(bsdf, frame.lightDirection.xyz, radiance) + sample.emission;
+        // Explicit constant fill for raster experiments; it is neither IBL nor shadowed direct light.
+        result += frame.ambientColor.rgb * sample.baseColor * sample.occlusion;
+        for (uint i = 0; i < uint(frame.lightConfig.x); ++i)
         {
-            result += vultraSceneLight(bsdf, sceneLights[i], sample.worldPosition);
+            // The main directional light is evaluated above through the frame's light fields.
+            if (int(i) != int(frame.lightConfig.y))
+            {
+                result += vultraSceneLight(bsdf, sceneLights[i], sample.worldPosition);
+            }
+        }
+    }
+    else
+    {
+        VultraMaterialHeader header;
+        header.type   = material.instance.z;
+        header.offset = material.instance.w;
+        result = vultraMaterialShade(materialData, header, sample, frame.lightDirection.xyz, view) * radiance +
+                 sample.emission;
+        result += frame.ambientColor.rgb * sample.baseColor * sample.occlusion;
+        for (uint i = 0; i < uint(frame.lightConfig.x); ++i)
+        {
+            if (int(i) != int(frame.lightConfig.y))
+            {
+                const LightData         light   = sceneLights[i];
+                const VultraLightSample arrival = vultraSampleLight(light, sample.worldPosition);
+                result += vultraMaterialShade(materialData, header, sample, arrival.toLight, view) *
+                          light.colorIntensity.rgb * light.colorIntensity.w * arrival.attenuation;
+            }
         }
     }
     if (frame.options.x > 0.5)

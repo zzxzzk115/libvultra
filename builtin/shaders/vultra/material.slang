@@ -1,9 +1,9 @@
 // `import vultra.material;` gives a stage the kernel's surface and lighting code: the surface a scene material
-// gives a rasterized vertex, and the OpenPBR response of that surface to directional, scene and environment
-// light. Forward shading uses the same code.
+// gives a rasterized vertex, the OpenPBR response of that surface to directional, scene and environment light,
+// and IVultraMaterial, the interface of a material type. Forward shading uses the same code.
 //
-// It declares the OpenPBR tables at set 0, binding 11, and the bound scene material: its textures and samplers
-// in set 1 and its per-draw constants as push constants, as SceneMaterials binds them.
+// It declares the OpenPBR tables at set 0, binding 11, and the bound scene material: its textures, samplers and
+// the parameter blocks in set 1 and the draw's indices as push constants, as SceneMaterials binds them.
 
 #include "lib/ibl.slangh"
 #include "lib/light.slangh"
@@ -53,3 +53,41 @@ float3 vultraEnvironmentLight(VultraSurface     surface,
                        environmentSampler,
                        maxMip);
 }
+
+// The interpolated vertex of a rasterized surface and the side it is seen from.
+struct VultraSurfaceInput
+{
+    SurfaceVertex vertex;
+    bool          frontFace;
+};
+
+// A material type. A type is a struct with a member `parameters` whose fields are the type's parameters, as its
+// registration lists them; the program's vultra.materials fills them from the material's parameter block.
+// surface() runs where the scene is rasterized with the bound material's textures (set 1); shade() runs wherever a
+// surface is lit, also in a pass that only reads the G-buffer, so it reads nothing but its parameters and arguments.
+interface IVultraMaterial
+{
+    // The surface at a rasterized point: what the required G-buffer layers hold. A type that cuts out
+    // fragments discards them here.
+    VultraSurface surface(VultraSurfaceInput input);
+
+    // Radiance reflected towards `toView` per unit radiance arriving from `toLight` (unit directions from the
+    // surface): the BSDF times the incident cosine.
+    float3 shade(VultraSurface surface, float3 toLight, float3 toView);
+}
+
+// vultra.openpbr, the type of the materials of model files: the OpenPBR subset the kernel implements. Its
+// parameters are the block GpuScene writes for a SurfaceMaterial, read through vultraOpenPbrParameters().
+struct VultraOpenPbr : IVultraMaterial
+{
+    VultraSurface surface(VultraSurfaceInput input)
+    {
+        const float3 baseColor = vultraBaseColor(input.vertex.uv, input.vertex.color).rgb;
+        return vultraSampleSurface(input.vertex, input.frontFace, baseColor);
+    }
+
+    float3 shade(VultraSurface surface, float3 toLight, float3 toView)
+    {
+        return vultraDirectionalLight(vultraPrepareBsdf(surface, toView), toLight, 1);
+    }
+};
