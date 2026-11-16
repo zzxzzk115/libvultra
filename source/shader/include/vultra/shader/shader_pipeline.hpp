@@ -57,6 +57,14 @@ namespace vultra
         // The program can be destroyed after creation; this pipeline has no file watcher.
         [[nodiscard]] static std::expected<std::unique_ptr<ShaderPipeline>, Error>
         create(Device& device, const ShaderProgram& program, std::vector<ShaderEntry> entries, Builder builder);
+        // The program create(device, file, entries, ...) builds from, without a watcher: the .slang source compiled
+        // for the device, or its cooked .vshaderc sibling's target for the device when the source is absent. For a
+        // caller that lays its pipeline out from reflection (shaderSetLayout) before building it from the program.
+        [[nodiscard]] static std::expected<ShaderProgram, Error>
+        loadProgram(Device&                            device,
+                    const std::filesystem::path&       file,
+                    std::vector<ShaderEntry>           entries,
+                    std::vector<std::filesystem::path> includeDirectories = {});
         ~ShaderPipeline();
         ShaderPipeline(const ShaderPipeline&)            = delete;
         ShaderPipeline& operator=(const ShaderPipeline&) = delete;
