@@ -70,9 +70,19 @@ namespace vultra
                const void*    nativeCreateInfo = nullptr,
                uint64_t       features         = 0,
                bool           bestEffort       = false);
+        // Tries `apis` in order until one creates a device, logging each failure; the error names every attempt.
+        // An empty list is automatic selection, as create() without an API.
+        [[nodiscard]] static std::expected<std::unique_ptr<Device>, Error>
+        create(std::span<const VriGraphicsAPI> apis,
+               bool                            validation       = true,
+               const void*                     nativeCreateInfo = nullptr,
+               uint64_t                        features         = 0,
+               bool                            bestEffort       = false);
         // The graphics APIs this build contains (libvultra_graphics_apis), in the order automatic selection tries
         // them: Vulkan first where it exists, Metal first on macOS, WebGPU on the Web.
         static std::span<const VriGraphicsAPI> graphicsAPIs();
+        // What automatic selection tries: graphicsAPIs(), or the one API VULTRA_GRAPHICS_API names.
+        [[nodiscard]] static std::expected<std::vector<VriGraphicsAPI>, Error> automaticGraphicsAPIs();
         ~Device();
         Device(const Device&)                                             = delete;
         Device&                                  operator=(const Device&) = delete;

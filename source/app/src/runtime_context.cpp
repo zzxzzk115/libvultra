@@ -31,7 +31,7 @@ namespace vultra
             return std::unexpected(window.error());
         }
         impl->window = std::move(*window);
-        auto device  = Device::create(config.validation, nullptr, config.features);
+        auto device  = Device::create(config.graphicsAPIs, config.validation, nullptr, config.features);
         if (!device)
         {
             return std::unexpected(device.error());

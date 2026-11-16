@@ -186,8 +186,7 @@ namespace vultra
         return std::nullopt;
     }
 
-    std::expected<std::unique_ptr<Device>, Error>
-    Device::create(bool validation, const void* nativeCreateInfo, uint64_t features, bool bestEffort)
+    std::expected<std::vector<VriGraphicsAPI>, Error> Device::automaticGraphicsAPIs()
     {
         // VULTRA_GRAPHICS_API narrows automatic selection to one API, for instance to run a program's tests on each.
         if (const char* requested = std::getenv("VULTRA_GRAPHICS_API"); requested && *requested)
@@ -197,10 +196,34 @@ namespace vultra
             {
                 return makeError("VULTRA_GRAPHICS_API={} names no graphics API of this build", requested);
             }
-            return create(*api, validation, nativeCreateInfo, features, bestEffort);
+            return std::vector<VriGraphicsAPI> {*api};
+        }
+        return std::vector<VriGraphicsAPI>(graphicsAPIs().begin(), graphicsAPIs().end());
+    }
+
+    std::expected<std::unique_ptr<Device>, Error>
+    Device::create(bool validation, const void* nativeCreateInfo, uint64_t features, bool bestEffort)
+    {
+        const auto apis = automaticGraphicsAPIs();
+        if (!apis)
+        {
+            return std::unexpected(apis.error());
+        }
+        return create(*apis, validation, nativeCreateInfo, features, bestEffort);
+    }
+
+    std::expected<std::unique_ptr<Device>, Error> Device::create(std::span<const VriGraphicsAPI> apis,
+                                                                 bool                            validation,
+                                                                 const void*                     nativeCreateInfo,
+                                                                 uint64_t                        features,
+                                                                 bool                            bestEffort)
+    {
+        if (apis.empty())
+        {
+            return create(validation, nativeCreateInfo, features, bestEffort);
         }
         std::string failures;
-        for (const auto api : graphicsAPIs())
+        for (const auto api : apis)
         {
             auto device = create(api, validation, nativeCreateInfo, features, bestEffort);
             if (device)
@@ -210,7 +233,7 @@ namespace vultra
             Logger::core().info("No {} device: {}", graphicsAPIName(api), device.error().message);
             failures += std::format("\n  {}: {}", graphicsAPIName(api), device.error().message);
         }
-        return makeError("No graphics API of this build created a device:{}", failures);
+        return makeError("No graphics API created a device:{}", failures);
     }
 
     std::span<const VriGraphicsAPI> Device::graphicsAPIs()
