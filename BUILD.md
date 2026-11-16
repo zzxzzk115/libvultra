@@ -27,9 +27,8 @@ branch; their instructions below are kept as instructions and marked where they 
 
 Dependency versions and package recipes live in [external/xmake.lua](external/xmake.lua) and
 [external/packages](external/packages/packages). The initial source build of Slang takes time. MSVC targets and
-packages use matching MT/MTd runtimes. VRI is pinned to the tagged [v0.2.1 release](external/vri/README.md),
-without local patches. This branch needs the changes of VRI pull requests 33 to 35, the planned 0.2.2: until that
-release, configure with `--libvultra_vri_dir` pointing at a VRI checkout that merges them.
+packages use matching MT/MTd runtimes. VRI is pinned to the tagged [v0.2.2 release](external/vri/README.md),
+without local patches.
 
 ## Configure and build
 
@@ -151,9 +150,8 @@ are never dropped from a strict request. An explicit `VriDeviceCreationDesc` kee
 
 `--libvultra_graphics_api=d3d12` (Windows) compiles shaders to DXIL (shader model 6.6). Slang loads the DirectX
 Shader Compiler at run time, so a program that compiles shaders needs `dxcompiler.dll` on `PATH` or beside the
-executable (the Vulkan SDK and the Windows SDK ship it); cooked packs need no compiler. VRI v0.2.1 has D3D12
-defects that the kernel hits; until a release contains the fixes (VRI pull request 36), point
-`--libvultra_vri_dir` at a checkout that includes them. The `xr` module is not available with D3D12.
+executable (the Vulkan SDK and the Windows SDK ship it); cooked packs need no compiler. D3D12 needs VRI v0.2.2
+or later. The `xr` module is not available with D3D12.
 
 A shader shared between APIs pins its D3D12 registers next to `[[vk::binding]]`, following VRI's mapping: constant
 and storage buffers are root descriptors at the range's `baseRegister`, other resources count from 0 per register
@@ -293,10 +291,9 @@ ran their frames on the emulator and the triangle was seen on its screen.
 
 For `arm64-v8a` the same was run on an AYN Thor (Snapdragon 8 Gen 2, Adreno 740, Android 13) over wireless
 debugging: the probe and `example-offline` passed, and the three modes of `example-basics` ran their frames.
-With the device's forced landscape the image on its screen was turned by 90 degrees: VRI v0.2.1 passes the
-surface's current transform as the swapchain's pre-transform. A build against a VRI checkout that declares the
-identity transform (`--libvultra_vri_dir`) showed the triangle upright on the device; the pinned release does
-not have that fix yet. Offscreen results are not affected.
+With the device's forced landscape the image on its screen was turned by 90 degrees: VRI v0.2.1 passed the
+surface's current transform as the swapchain's pre-transform. VRI v0.2.2 declares the identity transform, and a
+build with that change showed the triangle upright on the device. Offscreen results are not affected.
 
 Every packaging makes a new debug key, so `adb install -r` refuses to replace an application packaged earlier;
 run `adb uninstall <application id>` first. The Web probes were not run.

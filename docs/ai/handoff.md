@@ -86,7 +86,7 @@ Added:
 
 ## VRI
 
-The default build uses the tagged VRI v0.2.1 release through the shared xmake `vri` recipe; `external/vri/`
+The default build uses the tagged VRI v0.2.2 release through the shared xmake `vri` recipe; `external/vri/`
 holds no patches. The former patches, and the Metal patches previously carried by a downstream fork, were
 merged upstream as pull requests 26 to 29 of [zzxzzk115/VRI](https://github.com/zzxzzk115/VRI/pulls). The
 Vulkan changes were built and tested through this library; the Web, Metal and Android changes were not built
@@ -98,10 +98,10 @@ a 1.3 device; MoltenVK reports 1.2) and 31 (Metal reports point and range timest
 Vulkan found no adapter on macOS and Metal apps failed when the profiler was created. The `vri` recipe in
 zzxzzk115/xmake-repo carries v0.2.1 since its pull request 13.
 
-`dev-slim` now needs VRI changes that are in pull requests 33 (WebGPU fixes, ETC2 and ASTC 4x4), 34 (64-bit
-atomics) and 35 (identity surface transform), the planned 0.2.2, which is not released. The v0.2.1 package no
-longer compiles the kernel, so until the release and a new pin, configure with `--libvultra_vri_dir` pointing at
-a VRI checkout that merges those branches. Do not push `dev-slim` before that, since others could not build it.
+v0.2.2 (2026-11-16, pull request 37, tag commit `a6b5127`) merges pull requests 33 (WebGPU fixes, ETC2 and ASTC
+4x4), 34 (64-bit atomics), 35 (identity surface transform) and 36 (Direct3D 12 backend fixes); `dev-slim` needs
+all four, and the v0.2.1 package no longer compiles the kernel. The `vri` recipe carries v0.2.2 since
+zzxzzk115/xmake-repo pull request 14.
 
 ## Verification
 
@@ -132,7 +132,7 @@ for `x86_64` with NDK 30.0.16248370, packaged with the xmake scripts and run on 
 commands and what they found are in BUILD.md. The `arm64-v8a` builds ran on an AYN Thor (Adreno 740,
 Android 13): the probe, `example-offline` and the three modes of `example-basics`. That found that a display
 rotated against its panel is shown turned by 90 degrees; the fix is a VRI change (identity pre-transform),
-verified on the device through `--libvultra_vri_dir`; it is VRI pull request 35.
+verified on the device through `--libvultra_vri_dir`; it is VRI pull request 35, released in v0.2.2.
 
 The `xr` module gained controller input (grip and aim poses, select and squeeze per hand) and `example-xr`
 uses it. On the Meta XR Simulator the example submitted its frames with both controllers located; the buttons
@@ -203,8 +203,8 @@ nonempty canvas at construction"; a reload worked.
 - Shaders are DXIL, profile `sm_6_6`. Only this configuration builds `slang-static` with its `dxil` config; Slang
   loads `dxcompiler.dll` at run time, and a missing DLL is an error that names it. Adding the config changed the
   package hash, so every configuration rebuilds `slang-static` once with the same contents.
-- VRI v0.2.1 cannot run the kernel on D3D12. The fixes are VRI pull request 36 (`fix/d3d12-backend`, 20 commits);
-  it was verified merged onto the three 0.2.2 branches above (local merge `b6d54d1`, no conflicts).
+- VRI v0.2.1 cannot run the kernel on D3D12. The fixes are VRI pull request 36 (`fix/d3d12-backend`), released in
+  v0.2.2.
 - VRI's D3D12 register mapping was kept by the owner: root constant and storage buffers at the range's
   `baseRegister`, table resources counted from 0 per class in range order, push constants at `b<baseRegister>`
   in space 0. The forward shaders pin their registers to it; the material push constants are left to Slang
