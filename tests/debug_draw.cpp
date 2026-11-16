@@ -1,5 +1,6 @@
 #include "../examples/common/debug_lines.hpp"
 #include "support/check.hpp"
+#include "support/cleared_texture.hpp"
 #include "support/forward_fixture.hpp"
 
 #include <vultra/app/camera/fps_camera.hpp>
@@ -56,7 +57,7 @@ namespace
         auto&                debug     = *debugMesh;
         vultra::RenderGraph  graph(device);
         const vultra::Extent size {256, 192};
-        const auto           color = must(graph.createTexture("color", vultra::colorTexture(size)));
+        const auto           color = must(graph.createTexture("color", support::clearedTexture(size, {0, 0, 0, 1})));
         const auto           depth = must(graph.createTexture("depth", vultra::depthTexture(size)));
         // Isolate far clipping from coplanar model/line depth rounding, tested separately above.
         must(graph.addPass(

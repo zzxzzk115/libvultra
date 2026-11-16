@@ -1,6 +1,7 @@
 #include "../examples/common/colored_mesh.hpp"
 #include "../examples/common/triangle.hpp"
 #include "support/check.hpp"
+#include "support/cleared_texture.hpp"
 
 #include <vultra/app/imgui_app.hpp>
 #include <vultra/core/base/logger.hpp>
@@ -159,11 +160,12 @@ namespace
         const auto window = must(Window::create("Vultra | ImGui Pixel Scale Test", {320, 240}));
         const auto device = must(Device::create());
         const auto frame  = must(Frame::create(*device));
-        auto       target = must(Texture::create(*device, colorTexture({640, 480}, VriFormat_BGRA8_UNORM)));
-        const auto gui    = must(EditorGui::create(*device,
-                                                   *window,
-                                                   target.desc.format,
-                                                   {.docking = false, .multiViewport = false, .persistLayout = false}));
+        auto       target =
+            must(Texture::create(*device, support::clearedTexture({640, 480}, {0, 0, 0, 1}, VriFormat_BGRA8_UNORM)));
+        const auto gui = must(EditorGui::create(*device,
+                                                *window,
+                                                target.desc.format,
+                                                {.docking = false, .multiViewport = false, .persistLayout = false}));
         must(gui->begin());
         auto* list = ImGui::GetForegroundDrawList(ImGui::GetMainViewport());
         list->PushClipRect({10, 10}, {20, 20});
@@ -197,24 +199,25 @@ namespace
         using namespace vultra;
         const auto device = must(Device::create());
         const auto frame  = must(Frame::create(*device));
-        auto       output = must(Texture::create(*device, colorTexture({128, 64})));
+        auto       output = must(Texture::create(*device, support::clearedTexture({128, 64}, {0, 0, 0, 1})));
         const auto blit   = must(TextureBlit::create(*device, output.desc.format, 2));
         for (auto format : {VriFormat_RGBA8_SRGB, VriFormat_RGBA8_UNORM, VriFormat_BGRA8_SRGB, VriFormat_BGRA8_UNORM})
         {
-            auto left  = must(Texture::create(*device, colorTexture({32, 32}, format)));
-            auto right = must(Texture::create(*device, colorTexture({32, 32}, format)));
+            const std::array<float, 4> leftColor {0.18f, 0.04f, 0.5f, 1};
+            const std::array<float, 4> rightColor {0.5f, 0.18f, 0.04f, 1};
+            auto left  = must(Texture::create(*device, support::clearedTexture({32, 32}, leftColor, format)));
+            auto right = must(Texture::create(*device, support::clearedTexture({32, 32}, rightColor, format)));
             must(blit->setSource(0, left));
             must(blit->setSource(1, right));
-            auto*       cmd = must(frame->begin());
-            const float leftColor[4] {0.18f, 0.04f, 0.5f, 1};
-            const float rightColor[4] {0.5f, 0.18f, 0.04f, 1};
+            auto* cmd = must(frame->begin());
             for (auto* source : {&left, &right})
             {
                 source->transition(cmd,
                                    {VriAccess_ColorAttachmentWrite,
                                     VriLayout_ColorAttachment,
                                     VriPipelineStage_ColorAttachmentOutput});
-                beginColorPass(*device, cmd, must(source->view()), {32, 32}, source == &left ? leftColor : rightColor);
+                const auto& color = source == &left ? leftColor : rightColor;
+                beginColorPass(*device, cmd, must(source->view()), {32, 32}, color.data());
                 device->core.CmdEndRendering(cmd);
             }
             output.transition(
@@ -230,7 +233,7 @@ namespace
             for (uint32_t eye = 0; eye < 2; ++eye)
             {
                 const auto  pixel    = (32 * 128 + 32 + eye * 64) * 4;
-                const auto* expected = eye == 0 ? leftColor : rightColor;
+                const auto& expected = eye == 0 ? leftColor : rightColor;
                 for (size_t channel = 0; channel < 3; ++channel)
                 {
                     const auto encoded = 1.055f * std::pow(expected[channel], 1.0f / 2.4f) - 0.055f;
@@ -241,12 +244,13 @@ namespace
             require(image.rgba[0] == 0 && image.rgba[(32 * 128 + 64) * 4] == 0, "Blit ignored its output rectangle");
         }
         // The C++ indexed triangle is the reference for shader-generated and XR paths.
-        auto        reference = must(Texture::create(*device, colorTexture({128, 64}, VriFormat_RGBA32_SFLOAT)));
-        const auto  indexed   = must(sample::ColoredMesh::create(*device,
-                                                                 reference.desc.format,
-                                                                 sample::kTriangleVertices,
-                                                                 sample::kTriangleIndices));
-        auto*       cmd       = must(frame->begin());
+        auto reference =
+            must(Texture::create(*device, support::clearedTexture({128, 64}, {0, 0, 0, 1}, VriFormat_RGBA32_SFLOAT)));
+        const auto  indexed = must(sample::ColoredMesh::create(*device,
+                                                              reference.desc.format,
+                                                              sample::kTriangleVertices,
+                                                              sample::kTriangleIndices));
+        auto*       cmd     = must(frame->begin());
         const float black[4] {0, 0, 0, 1};
         reference.transition(
             cmd,
@@ -281,7 +285,7 @@ namespace
         };
         for (auto format : {VriFormat_BGRA8_UNORM, VriFormat_BGRA8_SRGB})
         {
-            auto       desktop  = must(Texture::create(*device, colorTexture({128, 64}, format)));
+            auto desktop = must(Texture::create(*device, support::clearedTexture({128, 64}, {0, 0, 0, 1}, format)));
             const auto triangle = must(Triangle::create(*device, format, "examples/offline/shaders/triangle.slang"));
             cmd                 = must(frame->begin());
             desktop.transition(
@@ -293,7 +297,7 @@ namespace
         }
         for (auto format : {VriFormat_RGBA8_SRGB, VriFormat_RGBA8_UNORM, VriFormat_BGRA8_SRGB, VriFormat_BGRA8_UNORM})
         {
-            auto       eye = must(Texture::create(*device, colorTexture({128, 64}, format)));
+            auto       eye = must(Texture::create(*device, support::clearedTexture({128, 64}, {0, 0, 0, 1}, format)));
             const auto xr  = must(Triangle::create(*device, format, "examples/offline/shaders/triangle.slang"));
             xr->parameters.encodeSrgb = 0;
             must(blit->setSource(0, eye));

@@ -229,8 +229,10 @@ the D3D12 port of those two, then reframed by the owner into backends chosen at 
 - `openPbrLuts` is no longer pinned to `t4`, which only forward shading's frame set matched; Slang's first-fit
   still gives it `t4` there.
 - The IBL targets are created with the opaque-black clear value their passes clear to; this removed the D3D12
-  debug-layer warning from every host run. Other kernel tests still clear targets to values they were not
-  created with and log that warning (debugdraw, display, graph-*, gui-*, render-path, shader-program).
+  debug-layer warning from every host run. The kernel tests create each target they clear to one value with that
+  value (`tests/support/cleared_texture.hpp`). Only `test-graph-resources` and `test-graph-subresources` still log
+  the warning (52 lines): they clear one texture, or aliased textures, to several values on purpose to observe
+  pass order and aliasing, which no single clear value matches.
 - Several backends per build (`libvultra_graphics_apis`), chosen at run time: `Device::graphicsAPIs()`,
   `Device::create()` over a list or automatically, `VULTRA_GRAPHICS_API`, `AppConfig::graphicsAPIs`. The owner's
   decisions are D50–D53 in vultra-plans (v45). OpenGL is accepted on the Web only; the GL milestone wires it.
@@ -242,8 +244,9 @@ the D3D12 port of those two, then reframed by the owner into backends chosen at 
   is cooked for DXIL.
 - Verified with one build of `vulkan,d3d12,webgpu`: 34/34 on each API (D3D12 with the clear-value warnings above);
   the SPIR-V and WGSL of the builtin pack equal those of single-API `dev-slim` builds byte for byte.
-- Seen, not fixed: `vultra.deferred` (Vultra-Packages) logs one WebGPU validation error ("Error matching
-  ShaderStages(FRAGMENT) shader requirements against the pipeline"), also with the unchanged WebGPU-only build.
+- `vultra.deferred` (Vultra-Packages) logged one WebGPU validation error ("Error matching ShaderStages(FRAGMENT)
+  shader requirements against the pipeline"): Vultra-CLI built a pass's pipelines before it knew the formats of
+  the textures it samples. Vultra-CLI now builds them when the pass joins a graph.
 
 ## Local state
 

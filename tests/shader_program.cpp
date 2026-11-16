@@ -1,5 +1,6 @@
 #include "../examples/common/triangle.hpp"
 #include "support/check.hpp"
+#include "support/cleared_texture.hpp"
 
 #include <vultra/gpu/image_readback.hpp>
 #include <vultra/graph/render_graph.hpp>
@@ -670,17 +671,17 @@ void callableMain(inout Payload payload)
                                             }),
                      kRejected);
     require(!builderCalled, "A mismatched shader target reached the device pipeline builder");
-    const auto  frame  = must(Frame::create(*device));
-    auto        target = must(Texture::create(*device, colorTexture({129, 73}, VriFormat_BGRA8_UNORM)));
-    Image       baseline;
-    const float clear[4] {0.1f, 0.2f, 0.7f, 1};
-    auto        render = [&](Triangle& triangle)
+    const auto                 frame = must(Frame::create(*device));
+    const std::array<float, 4> clear {0.1f, 0.2f, 0.7f, 1};
+    auto  target = must(Texture::create(*device, support::clearedTexture({129, 73}, clear, VriFormat_BGRA8_UNORM)));
+    Image baseline;
+    auto  render = [&](Triangle& triangle)
     {
         auto* commands = must(frame->begin());
         target.transition(
             commands,
             {VriAccess_ColorAttachmentWrite, VriLayout_ColorAttachment, VriPipelineStage_ColorAttachmentOutput});
-        must(triangle.draw(commands, target, clear));
+        must(triangle.draw(commands, target, clear.data()));
         must(frame->submitAndWait());
         return must(readback(*device, target));
     };

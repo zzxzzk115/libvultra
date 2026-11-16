@@ -1,4 +1,5 @@
 #include "support/check.hpp"
+#include "support/cleared_texture.hpp"
 
 #include <vultra/gpu/image_readback.hpp>
 #include <vultra/graph/render_graph.hpp>
@@ -207,9 +208,11 @@ void invert(uint3 id : SV_DispatchThreadID)
     // the compute batch sits between two graphics submissions.
     Result graphicsComputeGraphics(Device& device, Kernels& kernels, bool async)
     {
-        RenderGraph graph(device);
-        const auto  cleared = must(graph.createTexture("cleared", colorTexture(kSize, VriFormat_RGBA16_SFLOAT)));
-        const auto  inverted =
+        RenderGraph                           graph(device);
+        static constexpr std::array<float, 4> kClear {0.75f, 0.5f, 0.125f, 1};
+        const auto                            cleared =
+            must(graph.createTexture("cleared", support::clearedTexture(kSize, kClear, VriFormat_RGBA16_SFLOAT)));
+        const auto inverted =
             must(graph.createTexture("inverted",
                                      imageDesc(VriTextureUsage_ShaderResourceStorage | VriTextureUsage_ShaderResource |
                                                VriTextureUsage_TransferSrc)));
@@ -224,8 +227,7 @@ void invert(uint3 id : SV_DispatchThreadID)
                                {
                                    return std::unexpected(view.error());
                                }
-                               const float color[4] {0.75f, 0.5f, 0.125f, 1};
-                               beginColorPass(resources.device(), cmd, *view, kSize, color);
+                               beginColorPass(resources.device(), cmd, *view, kSize, kClear.data());
                                resources.device().core.CmdEndRendering(cmd);
                                return {};
                            }));
