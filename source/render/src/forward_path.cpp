@@ -229,6 +229,7 @@ namespace vultra
                  {{std::string(kSceneVertices)},
                   {std::string(kSceneIndices)},
                   {std::string(kSceneInstances)},
+                  {std::string(kSceneMaterialData)},
                   {std::string(kSceneLights)},
                   {std::string(kCameraData)}},
                  std::move(provides)},
@@ -518,9 +519,11 @@ namespace vultra
         const auto indices   = findSceneResource(build.resources, kSceneIndices);
         const auto instances = findSceneResource(build.resources, kSceneInstances);
         const auto lights    = findSceneResource(build.resources, kSceneLights);
-        if (!vertices || !indices || !instances || !lights)
+        const auto materials = findSceneResource(build.resources, kSceneMaterialData);
+        if (!vertices || !indices || !instances || !lights || !materials)
         {
-            return fail(Error {"vultra.forward_shading needs the geometry buffers and scene.lights"});
+            return fail(
+                Error {"vultra.forward_shading needs the geometry buffers, scene.material_data and scene.lights"});
         }
         if (*build.view == 0)
         {
@@ -658,6 +661,7 @@ namespace vultra
         forwardUses.push_back({vertexBuffer, Usage::eVertexBuffer});
         forwardUses.push_back({indexBuffer, Usage::eIndexBuffer});
         forwardUses.push_back({*instances, Usage::eStorageRead});
+        forwardUses.push_back({*materials, Usage::eStorageRead});
         forwardUses.push_back({*lights, Usage::eStorageRead});
         forwardUses.push_back({*camera, Usage::eConstantBuffer});
         const auto forward = build.graph.addPass(
