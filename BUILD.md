@@ -158,7 +158,15 @@ and storage buffers are root descriptors at the range's `baseRegister`, other re
 class in the layout's range order, each set in its own space, push constants at `VriPushConstantDesc::baseRegister`
 in space 0. Pinning a push-constant block with `register()` also reserves a descriptor slot in Slang's SPIR-V and
 WGSL reflection, so the forward material block leaves its push constants to Slang, which places them at `b2`.
+Slang gives an unpinned resource the first free register of its class, so `openPbrLuts` is left unpinned: it is
+`t4` between forward shading's pinned textures and takes its declaration-order register elsewhere.
 Buffers read as `StructuredBuffer` need `VriBufferDesc::structureStride`.
+
+For a DXIL program, `ShaderProgram::resourceBindings()` reports each resource's register within its class as
+`binding` and its register space as `set`, and marks push constants, which Slang lays out on D3D as ordinary
+constant buffers, from a SPIR-V layout of the same program that the compiler computes without emitting it. A
+layout built from that reflection binds on D3D12 when the resources outside root descriptors appear in register
+order within their class.
 
 ## Desktop, HiDPI and XR
 
