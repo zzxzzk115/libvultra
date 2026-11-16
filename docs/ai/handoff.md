@@ -219,6 +219,20 @@ nonempty canvas at construction"; a reload worked.
 - Not covered: `xr` stays Vulkan-only; Vultra-Packages shaders do not pin D3D12 registers; no other GPU, WARP or
   DXC version was tried.
 
+2026-11-16, branch `feat/d3d12-reflection` (for the Vultra-CLI and Vultra-Packages ports, branches `feat/d3d12`):
+
+- Reflection of DXIL programs reported binding 0 for every resource and no push constants. It now records the
+  D3D register classes (`ShaderOffsetKind::eConstantBufferRegister` to `eSamplerRegister`) and marks push
+  constants from a SPIR-V layout computed in the same Slang session (no SPIR-V is emitted). `test-shader-program`
+  checks registers, slots and push constants on the device's API.
+- `openPbrLuts` is no longer pinned to `t4`, which only forward shading's frame set matched; Slang's first-fit
+  still gives it `t4` there.
+- The IBL targets are created with the opaque-black clear value their passes clear to; this removed the D3D12
+  debug-layer warning from every host run. Other kernel tests still clear targets to values they were not
+  created with and log that warning (debugdraw, display, graph-*, gui-*, render-path, shader-program).
+- Verified: 34/34 on D3D12 and Vulkan; cooked SPIR-V of the builtin pack and of a research pass byte-identical to
+  `dev-slim`.
+
 ## Local state
 
 The uncommitted shadow receiver-culling work that existed on `dev-VRI` is kept as a git stash on the original
