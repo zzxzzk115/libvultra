@@ -70,7 +70,10 @@ namespace vultra
         }
         if (!compatible)
         {
-            return makeError("Device backend cannot consume shader target: {}", program.profile);
+            return makeError("Shaders compiled for {} cannot run on this device, which needs {}: compile or cook them "
+                             "with a build of the device's graphics API",
+                             program.profile,
+                             shaderProfile(device.graphicsAPI));
         }
         if (auto valid = validateShaderProgram(program); !valid)
         {
