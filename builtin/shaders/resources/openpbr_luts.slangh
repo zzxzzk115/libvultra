@@ -1,7 +1,9 @@
 #pragma once
 
 // Atlas uploaded by openpbr_luts.cpp; row 0 contains {offset, width, height, depth} per LUT ID.
-[[vk::binding(11, 0)]] Texture2D<float4> openPbrLuts : register(t4); // D3D12: the frame set's fifth texture range
+// No D3D12 register is pinned: Slang gives it the first free t register, which is forward shading's t4 (between the
+// frame set's pinned textures) and the next one in declaration order in a pass whose layout the host reflects.
+[[vk::binding(11, 0)]] Texture2D<float4> openPbrLuts;
 
 float4 loadOpenPbrLut(uint4 table, uint3 position)
 {
