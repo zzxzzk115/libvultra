@@ -170,7 +170,20 @@ pass with analytic lights and image-based lighting. It has no shadows, transpare
 what `StageBuild::requested` names and may leave out other resources it provides: forward shading writes the
 surface layers (`scene.normal` to `scene.motion`) only when something reads one. Motion compares each primitive
 with where the previous frame drew it, so a host calls `GpuScene::beginFrame()` once per frame. Stages that
-rasterize the scene with its materials use `SceneMaterials` and the Slang module `vultra.material`. The `display`
+rasterize the scene with its materials use `SceneMaterials` and the Slang module `vultra.material`.
+
+Materials have **types**. `vultra.material` declares `IVultraMaterial`: `surface()` gives the surface a rasterized
+point has (what the required G-buffer layers hold) and `shade()` the radiance it reflects from a light towards the
+viewer. `vultra.openpbr` is the built-in type, the one of model files. `GpuScene` keeps a header per material,
+`scene.materials` (type number and parameter offset), and the parameter blocks as words, `scene.material_data`;
+`vultra.mesh` provides both. A draw pushes the primitive's transform index, material number, type and offset; set 1
+holds the material's textures and `scene.material_data`. Every material starts as `vultra.openpbr` with its
+`SurfaceMaterial`'s values, which `RenderPath::prepare()` writes again each frame so that edits to
+`GpuScene::materials` show; `GpuScene::setMaterialType()` gives one another type and block. Shaders call the types
+through the Slang module `vultra.materials`: the builtin one knows only `vultra.openpbr` and dispatches nothing; a
+host that uses more types generates its own with the same three functions (`vultraMaterialSurface`,
+`vultraMaterialStandard`, `vultraMaterialShade`) and gives `forwardShadingStage()` forward shading cooked with it.
+Forward shading lights a type whose standard layers are not enough through its `shade()`. The `display`
 slot comes last: `RenderPath::addPasses` stops before it and gives `scene.output` (`scene.hdr` without an upscale
 stage), the caller appends its own passes, and `RenderPath::addDisplay` turns their image into `final`;
 `vultra.tone_mapping` is the reference display stage. Every path also imports the environment's textures
