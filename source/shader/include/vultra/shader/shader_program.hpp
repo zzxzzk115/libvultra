@@ -159,6 +159,9 @@ namespace vultra
 
     // The compile profile a device of `api` consumes: WGSL for WebGPU, DXIL for D3D12, SPIR-V otherwise.
     std::string shaderProfile(VriGraphicsAPI api);
+    // The distinct profiles of this build's graphics APIs, in Device::graphicsAPIs() order: what a pack cooked by
+    // this build carries so that it runs on any of them.
+    std::vector<std::string> buildShaderProfiles();
 
     // D3D12 profiles are Slang shader models (sm_6_x) and compile to DXIL. The container is stored in
     // CompiledShader::words like SPIR-V; both are sequences of 32-bit words, told apart by their first word.
@@ -194,6 +197,24 @@ namespace vultra
         bool      writeOnly     = false;
     };
 
+    // The ranges of one descriptor set laid out from reflection, and for each range the binding it holds.
+    struct ShaderSetLayout
+    {
+        std::vector<VriDescriptorRangeDesc> ranges;
+        std::vector<size_t>                 bindings; // Per range: an index into the bindings that were laid out.
+    };
+
+    // Lays out the bindings of one set (resourceBindings() of a program compiled for `api`, push constants left out)
+    // so that a device of `api` places each at the slot or register the shader declares; `bound[i]` says whether the
+    // caller writes bindings[i]. Every range of the result must be written: one per bound binding and, where the API
+    // numbers registers by range order (D3D12 descriptor tables), one per declared binding that precedes a bound one
+    // in its register class. A declaration that no layout can reach is an error naming the resource and the rule.
+    // Ranges carry the type, view type and stages; formats and flags are the caller's.
+    [[nodiscard]] std::expected<ShaderSetLayout, Error> shaderSetLayout(VriGraphicsAPI                         api,
+                                                                        std::span<const ShaderResourceBinding> bindings,
+                                                                        const std::vector<bool>&               bound,
+                                                                        VriShaderStageFlags                    stages);
+
     // Owns one target's code, layout and entry names; descriptor views expire when this program changes.
     struct ShaderProgram
     {
@@ -219,16 +240,31 @@ namespace vultra
         compileSource(const std::filesystem::path& sourcePath,
                       std::string_view             source,
                       const ShaderCompileOptions&  options = {});
-        // Returns false when the existing output is current.
+        // Compiles `source` for every profile (options.profile when none is given) into one archive. Returns false
+        // when the existing output is current.
         [[nodiscard]] static std::expected<bool, Error> cook(const std::filesystem::path& source,
                                                              const std::filesystem::path& output,
-                                                             const ShaderCompileOptions&  options = {});
+                                                             const ShaderCompileOptions&  options  = {},
+                                                             std::span<const std::string> profiles = {});
         static std::string                              compilerVersion();
 #endif
+        // A cooked .vshaderc holds one program per target (profile), all compiled from one source.
+        [[nodiscard]] static std::expected<std::vector<ShaderProgram>, Error>
+        loadTargets(const std::filesystem::path& file);
+        [[nodiscard]] static std::expected<std::vector<ShaderProgram>, Error>
+        loadTargets(std::span<const std::byte> bytes, const std::filesystem::path& identity);
+        // The program for `profile`; an archive without it is an error naming the targets it holds.
+        [[nodiscard]] static std::expected<ShaderProgram, Error> load(const std::filesystem::path& file,
+                                                                      std::string_view             profile);
+        [[nodiscard]] static std::expected<ShaderProgram, Error>
+        load(std::span<const std::byte> bytes, const std::filesystem::path& identity, std::string_view profile);
+        // The program of an archive with one target.
         [[nodiscard]] static std::expected<ShaderProgram, Error> load(const std::filesystem::path& file);
         [[nodiscard]] static std::expected<ShaderProgram, Error> load(std::span<const std::byte>   bytes,
                                                                       const std::filesystem::path& identity);
         [[nodiscard]] std::expected<void, Error>                 save(const std::filesystem::path& file) const;
+        [[nodiscard]] static std::expected<void, Error>          save(const std::filesystem::path&   file,
+                                                                      std::span<const ShaderProgram> targets);
         [[nodiscard]] std::expected<std::vector<VriShaderDesc>, Error>
         descriptors(std::span<const ShaderEntry> entries) const;
         [[nodiscard]] std::expected<std::vector<ShaderResourceBinding>, Error> resourceBindings() const;

@@ -94,15 +94,19 @@ void computeMain()
         }
     }
 
-    // Bindings as the device's API sees them: D3D registers per class (b, t, u, s), descriptor slots elsewhere, and
-    // push constants told apart on every target, whose layouts the host builds from this reflection.
+    // Bindings as each target sees them: D3D registers per class (b, t, u, s), descriptor slots elsewhere, and push
+    // constants told apart on every target. One archive carries the program of every target of this build; each
+    // keeps its reflection, and a target it lacks is an error naming the ones it has.
     void deviceBindings(const std::filesystem::path& root)
     {
         using namespace vultra;
-        ShaderCompileOptions options;
-        options.profile    = shaderProfile(Device::defaultGraphicsAPI());
-        const auto program = must(ShaderProgram::compileSource(root / "device_bindings.slang",
-                                                               R"(
+        std::vector<ShaderProgram> programs;
+        for (const auto& profile : buildShaderProfiles())
+        {
+            ShaderCompileOptions options;
+            options.profile = profile;
+            programs.push_back(must(ShaderProgram::compileSource(root / "device_bindings.slang",
+                                                                 R"(
 struct Parameters
 {
     float gain;
@@ -122,11 +126,11 @@ void computeMain()
     output[0]            = float4(parameters.gain);
 }
 )",
-                                                               options));
-        const auto file    = root / "device_bindings.vshaderc";
-        must(program.save(file));
-        const auto restored = must(ShaderProgram::load(file));
-        const bool d3d      = isD3DProfile(program.profile);
+                                                                 options)));
+        }
+        const auto file = root / "device_bindings.vshaderc";
+        must(ShaderProgram::save(file, programs));
+        support::rejects(ShaderProgram::load(file, "no_such_target"), kRejected);
         // Name, slot on D3D, slot elsewhere.
         const std::array expected {std::tuple {"constants", 1u, 0u},
                                    std::tuple {"image", 0u, 1u},
@@ -134,19 +138,85 @@ void computeMain()
                                    std::tuple {"written", 0u, 3u},
                                    std::tuple {"output", 1u, 4u},
                                    std::tuple {"filter", 0u, 5u}};
-        for (const auto* candidate : {&program, &restored})
+        for (const auto& program : programs)
         {
-            const auto bindings = must(candidate->resourceBindings());
-            const auto push     = std::ranges::find(bindings, "parameters", &ShaderResourceBinding::name);
-            require(push != bindings.end() && push->pushConstant && push->set == 0 && push->binding == 0,
-                    "Reflection lost the push constants or their register");
-            for (const auto& [name, d3dSlot, slot] : expected)
+            const auto restored = must(ShaderProgram::load(file, program.profile));
+            const bool d3d      = isD3DProfile(program.profile);
+            for (const auto* candidate : {&program, &restored})
             {
-                const auto binding = std::ranges::find(bindings, name, &ShaderResourceBinding::name);
-                require(binding != bindings.end() && !binding->pushConstant && binding->set == 0 &&
-                            binding->binding == (d3d ? d3dSlot : slot),
-                        std::string("Reflection placed ") + name + " at another register or slot");
+                const auto bindings = must(candidate->resourceBindings());
+                const auto push     = std::ranges::find(bindings, "parameters", &ShaderResourceBinding::name);
+                require(push != bindings.end() && push->pushConstant && push->set == 0 && push->binding == 0,
+                        "Reflection lost the push constants or their register");
+                for (const auto& [name, d3dSlot, slot] : expected)
+                {
+                    const auto binding = std::ranges::find(bindings, name, &ShaderResourceBinding::name);
+                    require(binding != bindings.end() && !binding->pushConstant && binding->set == 0 &&
+                                binding->binding == (d3d ? d3dSlot : slot),
+                            std::string("Reflection placed ") + name + " at another register or slot");
+                }
             }
+        }
+    }
+
+    // shaderSetLayout places what a caller binds where each API looks for it. With `image` (t0) left unbound and
+    // `elements` (t1) bound, D3D12's range-order numbering needs a range for image too; other APIs bind each range at
+    // its slot and leave it out. A storage buffer declared before a storage texture cannot be laid out for D3D12.
+    void setLayouts(const std::filesystem::path& root)
+    {
+        using namespace vultra;
+        for (const auto api : Device::graphicsAPIs())
+        {
+            ShaderCompileOptions options;
+            options.profile            = shaderProfile(api);
+            const auto        program  = must(ShaderProgram::compileSource(root / "set_layouts.slang",
+                                                                   R"(
+Texture2D<float4> image;
+StructuredBuffer<float4> elements;
+RWStructuredBuffer<float4> output;
+[shader("compute")]
+[numthreads(1, 1, 1)]
+void computeMain()
+{
+    output[0] = elements[0] + image.Load(int3(0, 0, 0));
+}
+)",
+                                                                   options));
+            const auto        bindings = must(program.resourceBindings());
+            std::vector<bool> bound;
+            for (const auto& binding : bindings)
+            {
+                bound.push_back(binding.name != "image");
+            }
+            const auto layout = must(shaderSetLayout(api, bindings, bound, VriShaderStage_Compute));
+            const auto holds  = [&](std::string_view name)
+            {
+                return std::ranges::any_of(layout.bindings,
+                                           [&](size_t index)
+                                           {
+                                               return bindings[index].name == name;
+                                           });
+            };
+            require(layout.ranges.size() == layout.bindings.size() && holds("elements") && holds("output") &&
+                        holds("image") == (api == VriGraphicsAPI_D3D12),
+                    "shaderSetLayout laid out other ranges than the API needs");
+
+            const auto misordered = must(ShaderProgram::compileSource(root / "misordered.slang",
+                                                                      R"(
+RWStructuredBuffer<float4> output;
+[format("rgba16f")] RWTexture2D<float4> image;
+[shader("compute")]
+[numthreads(1, 1, 1)]
+void computeMain()
+{
+    image[uint2(0, 0)] = output[0];
+}
+)",
+                                                                      options));
+            const auto declared   = must(misordered.resourceBindings());
+            const auto result     = shaderSetLayout(api, declared, std::vector<bool>(declared.size(), true), 0);
+            require(result.has_value() != (api == VriGraphicsAPI_D3D12),
+                    "A storage buffer before a storage texture must fail on D3D12 only");
         }
     }
 
@@ -364,6 +434,7 @@ int main()
     fs::create_directories(root / "source");
     resourceViews(root);
     deviceBindings(root);
+    setLayouts(root);
     userAttributes(root);
     compileModes(root);
     watchedReload(root);
@@ -472,7 +543,8 @@ void callableMain(inout Payload payload)
                   readBytes(rayCooked),
                   [](auto& document)
                   {
-                      document["entries"][0]["stage"] = uint32_t(VriShaderStage_RayGen | VriShaderStage_Miss);
+                      document["programs"][0]["entries"][0]["stage"] =
+                          uint32_t(VriShaderStage_RayGen | VriShaderStage_Miss);
                   });
     const std::array wrongStage {ShaderEntry {"vertexMain", VriShaderStage_Fragment}};
     support::rejects(ShaderProgram::compile(source, wrongStage, includes), kRejected);
@@ -489,37 +561,49 @@ void callableMain(inout Payload payload)
                   original,
                   [](auto& document)
                   {
-                      document["target"] = "dxil";
+                      document["programs"][0]["target"] = "dxil";
                   });
     alterDocument(cooked,
                   original,
                   [](auto& document)
                   {
-                      document["entries"][0]["stage"] = uint64_t(0x100000001);
+                      document["programs"][0]["entries"][0]["stage"] = uint64_t(0x100000001);
                   });
     alterDocument(cooked,
                   original,
                   [](auto& document)
                   {
-                      document["entries"][1]["name"] = "vertexMain";
+                      document["programs"][0]["entries"][1]["name"] = "vertexMain";
                   });
     alterDocument(cooked,
                   original,
                   [](auto& document)
                   {
-                      document["entries"][0]["code"] = nlohmann::json::binary({1, 2, 3});
+                      document["programs"][0]["entries"][0]["code"] = nlohmann::json::binary({1, 2, 3});
                   });
     alterDocument(cooked,
                   original,
                   [](auto& document)
                   {
-                      document["parameters"]["descriptor_type"] = 99;
+                      document["programs"][0]["parameters"]["descriptor_type"] = 99;
                   });
     alterDocument(cooked,
                   original,
                   [](auto& document)
                   {
-                      document["parameters"]["view_type"] = 99;
+                      document["programs"][0]["parameters"]["view_type"] = 99;
+                  });
+    alterDocument(cooked,
+                  original,
+                  [](auto& document)
+                  {
+                      document["programs"].push_back(document["programs"][0]);
+                  });
+    alterDocument(cooked,
+                  original,
+                  [](auto& document)
+                  {
+                      document["programs"] = nlohmann::json::array();
                   });
     must(writeFileAtomically(cooked, std::as_bytes(std::span(original))));
     auto invalid                = program;
@@ -554,7 +638,7 @@ void callableMain(inout Payload payload)
                   wgslBytes,
                   [](auto& document)
                   {
-                      document["entries"][0]["code"].get_binary().push_back(0);
+                      document["programs"][0]["entries"][0]["code"].get_binary().push_back(0);
                   });
     auto invalidWgsl             = wgsl;
     invalidWgsl.shaders[0].words = program.shaders[0].words;
@@ -563,7 +647,7 @@ void callableMain(inout Payload payload)
     support::rejects(ShaderProgram::compile(source, wgslOptions), kRejected);
     // The GPU half runs the cook this build's device consumes; a cook for another target must stop before the
     // builder.
-    const auto           deviceProfile = shaderProfile(Device::defaultGraphicsAPI());
+    const auto           deviceProfile = shaderProfile(device->graphicsAPI());
     const ShaderProgram& mismatched    = deviceProfile == "wgsl" ? restored : wgslRestored;
     ShaderProgram        deviceProgram = deviceProfile == "wgsl" ? wgsl : program;
     if (isD3DProfile(deviceProfile))

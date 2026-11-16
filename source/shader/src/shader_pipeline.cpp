@@ -220,14 +220,15 @@ namespace vultra
             {
                 return std::unexpected(bytes.error());
             }
-            program = ShaderProgram::load(*bytes, m_File);
+            program = ShaderProgram::load(*bytes, m_File, m_CompileOptions.profile);
         }
         else
         {
 #ifdef VULTRA_WITH_SHADER_COMPILER
-            program = m_Compiler ? m_Compiler->compile(m_File, m_CompileOptions) : ShaderProgram::load(m_File);
+            program = m_Compiler ? m_Compiler->compile(m_File, m_CompileOptions) :
+                                 ShaderProgram::load(m_File, m_CompileOptions.profile);
 #else
-            program = ShaderProgram::load(m_File);
+            program = ShaderProgram::load(m_File, m_CompileOptions.profile);
 #endif
         }
         if (!program)
