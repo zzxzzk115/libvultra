@@ -145,9 +145,12 @@ namespace vultra
             return std::unexpected(uploaded.error());
         }
         radiance             = std::move(*uploaded);
-        const auto createHdr = [&](const VriTextureDesc& desc) -> std::expected<std::unique_ptr<Texture>, Error>
+        const auto createHdr = [&](VriTextureDesc desc) -> std::expected<std::unique_ptr<Texture>, Error>
         {
-            auto texture = Texture::create(device, desc);
+            // The passes below clear to opaque black; D3D12 clears a target fastest, and without a debug-layer
+            // warning, at the value it was created with.
+            desc.clearValue.color.f32[3] = 1;
+            auto texture                 = Texture::create(device, desc);
             if (!texture)
             {
                 return std::unexpected(texture.error());
