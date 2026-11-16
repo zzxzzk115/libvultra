@@ -146,34 +146,43 @@ namespace vultra
         {
             return makeError("No built-in shader passes to cook");
         }
-        // The pack is cooked for the backend of this build. WGSL has no ray queries, so a WebGPU pack has no
-        // path tracer.
+        // Each program is cooked for every graphics API of this build. WGSL has no ray queries, so the path tracer has
+        // no WebGPU target.
         ShaderCompileOptions options;
         options.includeDirectories.assign(includes.begin(), includes.end());
-        options.profile = shaderProfile(Device::defaultGraphicsAPI());
         std::vector<VpkFile> files;
         for (const auto& source : sources)
         {
             options.rayQuery = source.filename() == "path_trace.slang";
-            if (options.rayQuery && options.profile == "wgsl")
+            std::vector<ShaderProgram> programs;
+            for (const auto& profile : buildShaderProfiles())
             {
-                Logger::core().info("Leaving out {}: WGSL has no ray queries", source.filename().string());
+                if (options.rayQuery && profile == "wgsl")
+                {
+                    Logger::core().info("Leaving out {} for wgsl: WGSL has no ray queries", source.filename().string());
+                    continue;
+                }
+                options.profile = profile;
+                Logger::core().info("Cooking built-in shader {} ({})", source.filename().string(), profile);
+                auto program = ShaderProgram::compile(source, options);
+                if (!program)
+                {
+                    return std::unexpected(program.error());
+                }
+                if (!program->diagnostics.empty())
+                {
+                    Logger::core().warn("{}", program->diagnostics);
+                }
+                programs.push_back(std::move(*program));
+            }
+            if (programs.empty())
+            {
                 continue;
-            }
-            Logger::core().info("Cooking built-in shader {} ({})", source.filename().string(), options.profile);
-            const auto program = ShaderProgram::compile(source, options);
-            if (!program)
-            {
-                return std::unexpected(program.error());
-            }
-            if (!program->diagnostics.empty())
-            {
-                Logger::core().warn("{}", program->diagnostics);
             }
             auto relative = source.lexically_relative(*engine);
             relative.replace_extension(".vshaderc");
             const auto outputFile = cooked.path / relative;
-            if (auto saved = program->save(outputFile); !saved)
+            if (auto saved = ShaderProgram::save(outputFile, programs); !saved)
             {
                 return saved;
             }

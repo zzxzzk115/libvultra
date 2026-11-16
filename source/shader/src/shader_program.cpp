@@ -1,5 +1,6 @@
 #include "shader_archive.hpp"
 
+#include <vultra/gpu/device.hpp>
 #include <vultra/shader/shader_program.hpp>
 
 #include <nlohmann/json.hpp>
@@ -24,24 +25,84 @@ namespace vultra
                    stage == VriShaderStage_Callable;
         }
 
-        std::expected<ShaderProgram, Error> programFromArchive(const nlohmann::json&        document,
-                                                               const std::filesystem::path& identity)
+        // An archive holds one program per target, all compiled from the same source.
+        std::expected<std::vector<ShaderProgram>, Error> programsFromArchive(const nlohmann::json&        document,
+                                                                             const std::filesystem::path& identity)
         {
             // readShaderArchive has checked that the kind is present.
             if (document.at("kind") != "raw_slang")
             {
                 return makeError("ShaderProgram requires a raw Slang artifact: {}", identity.string());
             }
-            auto program = detail::decodeShaderProgram(document);
-            if (!program)
+            const auto programs = document.find("programs");
+            if (programs == document.end() || !programs->is_array() || programs->empty() || programs->size() > 16)
             {
-                return program;
+                return makeError("Invalid cooked shader targets: {}", identity.string());
             }
-            if (auto valid = detail::validateShaderProgram(*program); !valid)
+            std::vector<ShaderProgram> result;
+            for (const auto& entry : *programs)
             {
-                return std::unexpected(valid.error());
+                auto program = detail::decodeShaderProgram(entry);
+                if (!program)
+                {
+                    return std::unexpected(program.error());
+                }
+                if (auto valid = detail::validateShaderProgram(*program); !valid)
+                {
+                    return std::unexpected(valid.error());
+                }
+                if (std::ranges::find(result, program->profile, &ShaderProgram::profile) != result.end())
+                {
+                    return makeError("Cooked shader repeats target {}: {}", program->profile, identity.string());
+                }
+                result.push_back(std::move(*program));
             }
-            return program;
+            return result;
+        }
+
+        std::string targetNames(std::span<const ShaderProgram> programs)
+        {
+            std::string names;
+            for (const auto& program : programs)
+            {
+                names += (names.empty() ? "" : ", ") + program.profile;
+            }
+            return names;
+        }
+
+        std::expected<ShaderProgram, Error> selectTarget(std::expected<std::vector<ShaderProgram>, Error> programs,
+                                                         std::string_view                                 profile,
+                                                         const std::filesystem::path&                     identity)
+        {
+            if (!programs)
+            {
+                return std::unexpected(programs.error());
+            }
+            const auto found = std::ranges::find(*programs, profile, &ShaderProgram::profile);
+            if (found == programs->end())
+            {
+                return makeError("{} has no shaders for {}; it was cooked for {}",
+                                 identity.string(),
+                                 profile,
+                                 targetNames(*programs));
+            }
+            return std::move(*found);
+        }
+
+        std::expected<ShaderProgram, Error> onlyTarget(std::expected<std::vector<ShaderProgram>, Error> programs,
+                                                       const std::filesystem::path&                     identity)
+        {
+            if (!programs)
+            {
+                return std::unexpected(programs.error());
+            }
+            if (programs->size() != 1)
+            {
+                return makeError("{} holds shaders for {}; load the one a device needs",
+                                 identity.string(),
+                                 targetNames(*programs));
+            }
+            return std::move(programs->front());
         }
     } // namespace
 
@@ -53,6 +114,20 @@ namespace vultra
         }
         // Shader model 6.6 covers mesh shading, ray queries, wave operations and 64-bit atomics.
         return api == VriGraphicsAPI_D3D12 ? "sm_6_6" : "spirv_1_5";
+    }
+
+    std::vector<std::string> buildShaderProfiles()
+    {
+        std::vector<std::string> profiles;
+        for (const auto api : Device::graphicsAPIs())
+        {
+            auto profile = shaderProfile(api);
+            if (std::ranges::find(profiles, profile) == profiles.end())
+            {
+                profiles.push_back(std::move(profile));
+            }
+        }
+        return profiles;
     }
 
     std::expected<void, Error> detail::validateShaderProgram(const ShaderProgram& program, const VriDeviceDesc& device)
@@ -169,34 +244,76 @@ namespace vultra
 
     std::expected<void, Error> ShaderProgram::save(const std::filesystem::path& file) const
     {
-        if (auto valid = detail::validateShaderProgram(*this); !valid)
-        {
-            return valid;
-        }
-        auto document       = detail::encodeShaderProgram(*this);
-        document["version"] = 1;
-        document["kind"]    = "raw_slang";
-        return detail::writeShaderArchive(file, document);
+        return save(file, std::span(this, 1));
     }
 
-    std::expected<ShaderProgram, Error> ShaderProgram::load(const std::filesystem::path& file)
+    std::expected<void, Error> ShaderProgram::save(const std::filesystem::path& file,
+                                                   std::span<const ShaderProgram> targets)
+    {
+        if (targets.empty() || targets.size() > 16)
+        {
+            return makeError("A cooked shader holds 1 to 16 targets: {}", file.string());
+        }
+        nlohmann::json programs = nlohmann::json::array();
+        for (const auto& program : targets)
+        {
+            if (auto valid = detail::validateShaderProgram(program); !valid)
+            {
+                return valid;
+            }
+            if (std::ranges::count(targets, program.profile, &ShaderProgram::profile) != 1)
+            {
+                return makeError("A cooked shader holds one program per target, {} twice: {}",
+                                 program.profile,
+                                 file.string());
+            }
+            programs.push_back(detail::encodeShaderProgram(program));
+        }
+        return detail::writeShaderArchive(file, {{"version", 1}, {"kind", "raw_slang"}, {"programs", programs}});
+    }
+
+    std::expected<std::vector<ShaderProgram>, Error> ShaderProgram::loadTargets(const std::filesystem::path& file)
     {
         const auto document = detail::readShaderArchive(file);
         if (!document)
         {
             return std::unexpected(document.error());
         }
-        return programFromArchive(*document, file);
+        return programsFromArchive(*document, file);
     }
 
-    std::expected<ShaderProgram, Error> ShaderProgram::load(std::span<const std::byte>   bytes,
-                                                            const std::filesystem::path& identity)
+    std::expected<std::vector<ShaderProgram>, Error>
+    ShaderProgram::loadTargets(std::span<const std::byte> bytes, const std::filesystem::path& identity)
     {
         const auto document = detail::readShaderArchive(bytes, identity);
         if (!document)
         {
             return std::unexpected(document.error());
         }
-        return programFromArchive(*document, identity);
+        return programsFromArchive(*document, identity);
+    }
+
+    std::expected<ShaderProgram, Error> ShaderProgram::load(const std::filesystem::path& file)
+    {
+        return onlyTarget(loadTargets(file), file);
+    }
+
+    std::expected<ShaderProgram, Error> ShaderProgram::load(std::span<const std::byte>   bytes,
+                                                            const std::filesystem::path& identity)
+    {
+        return onlyTarget(loadTargets(bytes, identity), identity);
+    }
+
+    std::expected<ShaderProgram, Error> ShaderProgram::load(const std::filesystem::path& file,
+                                                            std::string_view             profile)
+    {
+        return selectTarget(loadTargets(file), profile, file);
+    }
+
+    std::expected<ShaderProgram, Error> ShaderProgram::load(std::span<const std::byte>   bytes,
+                                                            const std::filesystem::path& identity,
+                                                            std::string_view             profile)
+    {
+        return selectTarget(loadTargets(bytes, identity), profile, identity);
     }
 } // namespace vultra

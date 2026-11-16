@@ -175,4 +175,98 @@ namespace vultra
         return result;
     }
 
+    std::expected<ShaderSetLayout, Error> shaderSetLayout(VriGraphicsAPI                         api,
+                                                          std::span<const ShaderResourceBinding> bindings,
+                                                          const std::vector<bool>&               bound,
+                                                          VriShaderStageFlags                    stages)
+    {
+        if (bound.size() != bindings.size())
+        {
+            return makeError("shaderSetLayout needs one bound flag per binding");
+        }
+        ShaderSetLayout layout;
+        const auto      add = [&](size_t index)
+        {
+            const auto&            binding = bindings[index];
+            VriDescriptorRangeDesc range {binding.binding, binding.count, binding.type, stages};
+            range.viewType = binding.viewType;
+            layout.ranges.push_back(range);
+            layout.bindings.push_back(index);
+        };
+        // VRI binds every range at its baseRegister, except in D3D12 descriptor tables: there constant and storage
+        // buffers are root descriptors at their register, but the other resources of a set are numbered from
+        // register 0 per class (t, u, s) in range order.
+        const bool tables = api == VriGraphicsAPI_D3D12;
+        const auto root   = [](VriDescriptorType type)
+        {
+            return type == VriDescriptorType_ConstantBuffer || type == VriDescriptorType_StorageBuffer;
+        };
+        for (size_t index = 0; index < bindings.size(); ++index)
+        {
+            if (bound[index] && (!tables || root(bindings[index].type)))
+            {
+                add(index);
+            }
+        }
+        if (!tables)
+        {
+            return layout;
+        }
+        // Each table class needs a range for every register up to the last one the caller binds.
+        constexpr std::array<char, 4> kClassNames {'b', 't', 'u', 's'};
+        for (const size_t kind : {size_t(1), size_t(2), size_t(3)})
+        {
+            std::vector<size_t> members;
+            uint32_t            last = 0;
+            bool                used = false;
+            for (size_t index = 0; index < bindings.size(); ++index)
+            {
+                if (root(bindings[index].type) || registerClass(bindings[index].type) != kind)
+                {
+                    continue;
+                }
+                members.push_back(index);
+                if (bound[index])
+                {
+                    last = used ? std::max(last, bindings[index].binding) : bindings[index].binding;
+                    used = true;
+                }
+            }
+            if (!used)
+            {
+                continue;
+            }
+            std::ranges::sort(members,
+                              [&bindings](size_t left, size_t right)
+                              {
+                                  return bindings[left].binding < bindings[right].binding;
+                              });
+            uint32_t next = 0;
+            for (const auto index : members)
+            {
+                const auto& binding = bindings[index];
+                if (binding.binding > last)
+                {
+                    break;
+                }
+                if (binding.binding != next)
+                {
+                    return makeError("{} is at {}{}, but D3D12 numbers a set's {} registers from {}0 in declaration "
+                                     "order and {}{} belongs to no resource of the set; storage textures (u) must "
+                                     "be declared before storage buffers",
+                                     binding.name,
+                                     kClassNames[kind],
+                                     binding.binding,
+                                     kClassNames[kind],
+                                     kClassNames[kind],
+                                     kClassNames[kind],
+                                     next);
+                }
+                add(index);
+                next += binding.count;
+            }
+        }
+        return layout;
+    }
+
 } // namespace vultra

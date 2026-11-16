@@ -6,7 +6,10 @@
 
 #include <slang.h>
 
+#include <algorithm>
 #include <fstream>
+#include <utility>
+#include <vector>
 
 namespace vultra
 {
@@ -22,22 +25,36 @@ namespace vultra
             return std::string {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
         }
 
-        // Whether an existing cooked program was built from the same request and the same inputs.
-        std::expected<bool, Error> cookedProgramCurrent(const std::filesystem::path& source,
-                                                        const std::filesystem::path& output,
-                                                        const std::string&           key,
-                                                        const ShaderCompileOptions&  options)
+        // Whether an existing cooked archive holds exactly these targets, built from the same requests (one key per
+        // target) and the same inputs.
+        std::expected<bool, Error> cookedProgramCurrent(const std::filesystem::path&                    source,
+                                                        const std::filesystem::path&                    output,
+                                                        std::span<const std::pair<std::string, std::string>> keys,
+                                                        const ShaderCompileOptions&                     options)
         {
-            const auto previous = ShaderProgram::load(output);
+            const auto previous = ShaderProgram::loadTargets(output);
             if (!previous)
             {
                 return std::unexpected(previous.error());
             }
-            if (previous->compileKey != key)
+            if (previous->size() != keys.size())
             {
                 return false;
             }
-            return detail::shaderDependenciesCurrent(previous->dependencies, source, options);
+            for (const auto& [profile, key] : keys)
+            {
+                const auto found = std::ranges::find(*previous, profile, &ShaderProgram::profile);
+                if (found == previous->end() || found->compileKey != key)
+                {
+                    return false;
+                }
+                const auto current = detail::shaderDependenciesCurrent(found->dependencies, source, options);
+                if (!current || !*current)
+                {
+                    return current;
+                }
+            }
+            return true;
         }
     } // namespace
 
@@ -84,22 +101,38 @@ namespace vultra
 
     std::expected<bool, Error> ShaderProgram::cook(const std::filesystem::path& source,
                                                    const std::filesystem::path& output,
-                                                   const ShaderCompileOptions&  options)
+                                                   const ShaderCompileOptions&  options,
+                                                   std::span<const std::string> profiles)
     {
         const auto text = readSource(source);
         if (!text)
         {
             return std::unexpected(text.error());
         }
-        const auto key = detail::shaderCompileKey(source, *text, options);
-        if (!key)
+        std::vector<ShaderCompileOptions> targets;
+        for (const auto& profile : profiles)
         {
-            return std::unexpected(key.error());
+            targets.push_back(options);
+            targets.back().profile = profile;
+        }
+        if (targets.empty())
+        {
+            targets.push_back(options);
+        }
+        std::vector<std::pair<std::string, std::string>> keys;
+        for (const auto& target : targets)
+        {
+            const auto key = detail::shaderCompileKey(source, *text, target);
+            if (!key)
+            {
+                return std::unexpected(key.error());
+            }
+            keys.emplace_back(target.profile, *key);
         }
         std::error_code error;
         if (std::filesystem::is_regular_file(output, error))
         {
-            const auto current = cookedProgramCurrent(source, output, *key, options);
+            const auto current = cookedProgramCurrent(source, output, keys, options);
             if (!current)
             {
                 Logger::core().warn("Rebuilding unreadable shader cache {}: {}",
@@ -113,18 +146,23 @@ namespace vultra
             }
         }
         Logger::core().info("Cooking raw Slang shader: {}", source.string());
-        auto candidate = compileSource(source, *text, options);
-        if (!candidate)
+        std::vector<ShaderProgram> programs;
+        for (const auto& target : targets)
         {
-            return std::unexpected(candidate.error());
+            auto candidate = compileSource(source, *text, target);
+            if (!candidate)
+            {
+                return std::unexpected(candidate.error());
+            }
+            if (!candidate->diagnostics.empty())
+            {
+                Logger::core().warn("{}", candidate->diagnostics);
+            }
+            programs.push_back(std::move(*candidate));
         }
-        if (auto saved = candidate->save(output); !saved)
+        if (auto saved = save(output, programs); !saved)
         {
             return std::unexpected(saved.error());
-        }
-        if (!candidate->diagnostics.empty())
-        {
-            Logger::core().warn("{}", candidate->diagnostics);
         }
         return true;
     }
