@@ -357,7 +357,7 @@ namespace
         {
             return std::unexpected(system.error());
         }
-        auto device = Device::create(true, (*system)->creationHooks());
+        auto device = Device::create(VriGraphicsAPI_Vulkan, true, (*system)->creationHooks());
         if (!device)
         {
             return std::unexpected(device.error());

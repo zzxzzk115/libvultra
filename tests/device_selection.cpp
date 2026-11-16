@@ -18,15 +18,17 @@ int main()
         must(frame->submitAndWait());
     }
 
-    // Discover whether this machine can exercise the original Ray Query regression.
+    // Discover whether the API automatic selection uses can exercise the original Ray Query regression. Only
+    // Vulkan enumerates adapters; another API is not probed.
     constexpr uint64_t          required = VriFeature_RayQuery | VriFeature_Bindless;
-    std::vector<VriAdapterDesc> adapters(vriEnumerateAdapters(VriGraphicsAPI_Vulkan, nullptr, 0));
-    vriEnumerateAdapters(VriGraphicsAPI_Vulkan, adapters.data(), uint32_t(adapters.size()));
+    const auto                  api      = must(vultra::Device::automaticGraphicsAPIs()).front();
+    std::vector<VriAdapterDesc> adapters(vriEnumerateAdapters(api, nullptr, 0));
+    vriEnumerateAdapters(api, adapters.data(), uint32_t(adapters.size()));
     bool supportsRayQuery = false;
     for (uint32_t index = 0; index < adapters.size(); ++index)
     {
         auto desc                                                            = vriDefaultDeviceCreationDesc();
-        desc.graphicsAPI                                                     = VriGraphicsAPI_Vulkan;
+        desc.graphicsAPI                                                     = api;
         desc.adapterIndex                                                    = index;
         desc.enabledFeatures                                                 = required;
         desc.bestEffort                                                      = VRI_TRUE;

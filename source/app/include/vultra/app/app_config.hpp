@@ -6,6 +6,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace vultra
 {
@@ -19,6 +20,8 @@ namespace vultra
         // Required VRI features. Device creation fails explicitly when unavailable.
         uint64_t                features = 0;
         std::optional<uint64_t> renderDocFrame; // zero-based; requires an injected RenderDoc session
+        // The graphics APIs to try, in order; empty is Device::create's automatic selection.
+        std::vector<VriGraphicsAPI> graphicsAPIs;
     };
 
 } // namespace vultra

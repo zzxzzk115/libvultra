@@ -73,7 +73,7 @@ namespace vultra
         }
         Services services;
         services.m_Activity = &activity;
-        auto device         = Device::create(config.validation, nullptr, config.features);
+        auto device         = Device::create(config.graphicsAPIs, config.validation, nullptr, config.features);
         if (!device)
         {
             return std::unexpected(device.error());
