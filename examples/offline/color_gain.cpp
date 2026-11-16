@@ -189,7 +189,7 @@ namespace research
         return {"research.color_gain",
                 {{"source", vultra::PassResourceKind::eTexture, VriFormat_RGBA16_SFLOAT}},
                 {{"color", vultra::PassResourceKind::eTexture, VriFormat_RGBA16_SFLOAT, 0}},
-                {{"gain", 1, 0, 8}},
+                {{"gain", 1, 0, 8, "Gain"}},
                 0,
                 [program](vultra::Device& device) -> std::expected<std::unique_ptr<vultra::GraphPass>, vultra::Error>
                 {
