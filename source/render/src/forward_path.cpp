@@ -214,10 +214,10 @@ namespace vultra
                 }};
     }
 
-    StageType forwardShadingStage()
+    StageType forwardShadingStage(VriGraphicsAPI api)
     {
-        // The description is checked before a device exists, so it names the layers of the build's graphics API.
-        auto provides = forwardTargets(Device::defaultGraphicsAPI());
+        // The description is checked before a device exists, so the caller names the API it describes.
+        auto provides = forwardTargets(api);
         provides.push_back({std::string(kSceneDepth), VriFormat_D32_SFLOAT, "depth"});
         return {{std::string(ForwardShadingStage::kName),
                  {"shading"},
@@ -249,7 +249,7 @@ namespace vultra
 
     std::expected<std::unique_ptr<RenderPath>, Error> createForwardPath(Device& device, const AssetSource* shaders)
     {
-        const std::array stages {meshStage(), forwardShadingStage(), toneMappingStage()};
+        const std::array stages {meshStage(), forwardShadingStage(device.graphicsAPI()), toneMappingStage()};
         return RenderPath::create(device, forwardPathDesc(), stages, shaders);
     }
 

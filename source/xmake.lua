@@ -84,17 +84,21 @@ target("vultra")
     end
 
     if features.gpu then
-        local api = get_config("libvultra_graphics_api") or (is_plat("wasm") and "webgpu" or "vulkan")
+        -- The built graphics APIs in automatic order, as a list of VriGraphicsAPI values (Device::graphicsAPIs).
         local api_enum = {vulkan = "VriGraphicsAPI_Vulkan", d3d12 = "VriGraphicsAPI_D3D12",
                           metal = "VriGraphicsAPI_Metal", webgpu = "VriGraphicsAPI_WebGPU",
-                          webgl2 = "VriGraphicsAPI_OpenGLES"}
-        add_defines("VULTRA_GRAPHICS_API=" .. api_enum[api])
+                          opengl = "VriGraphicsAPI_OpenGLES"}
+        local apis = {}
+        for _, name in ipairs(vultraGraphicsApis() or {}) do
+            table.insert(apis, api_enum[name])
+        end
+        add_defines("VULTRA_GRAPHICS_APIS=" .. table.concat(apis, ","))
         add_files("gpu/src/device.cpp", "gpu/src/resources.cpp", "gpu/src/buffer_upload.cpp",
                   "gpu/src/image_readback.cpp", "gpu/src/swapchain.cpp")
         add_files("gpu/src/profiling/profiler.cpp", "gpu/src/profiling/memory_report.cpp",
                   "gpu/src/profiling/benchmark.cpp")
         add_packages("vri", {public = true})
-        if is_plat("macosx") and api == "vulkan" then
+        if is_plat("macosx") and vultraHasGraphicsApi("vulkan") then
             -- The VRI package leaves the macOS loader to its consumer. Link the SDK loader by absolute path:
             -- adding the SDK lib directory would let its glslang/SPIRV archives shadow the packages.
             local sdk = os.getenv("VULKAN_SDK")

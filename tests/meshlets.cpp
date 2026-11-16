@@ -154,7 +154,7 @@ int main()
     verifyClusters(scene);
     // WebGPU has no mesh shaders; on Vulkan and Metal they depend on the GPU, such as an Intel Raptor Lake iGPU.
     const auto meshDevice = vultra::Device::create(true, nullptr, VriFeature_MeshShader);
-    require(!meshDevice || vultra::Device::defaultGraphicsAPI() != VriGraphicsAPI_WebGPU,
+    require(!meshDevice || (*meshDevice)->graphicsAPI() != VriGraphicsAPI_WebGPU,
             "WebGPU created a device with mesh shading");
     if (!meshDevice)
     {

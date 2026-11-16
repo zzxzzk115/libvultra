@@ -22,8 +22,8 @@ namespace vultra
 
     // "vultra.forward_shading", a view stage for the slot shading. Reads the geometry buffers and scene.lights and
     // provides scene.hdr and scene.depth: one opaque OpenPBR forward pass over a skybox, with analytic lights and
-    // image-based lighting.
-    StageType forwardShadingStage();
+    // image-based lighting. It provides the G-buffer layers of `api` (gbufferLayers) on request.
+    StageType forwardShadingStage(VriGraphicsAPI api);
 
     RenderPathDesc forwardPathDesc();
 

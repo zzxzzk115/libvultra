@@ -1351,7 +1351,7 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
         };
         const std::vector<StageDesc> stages {
             meshStage().desc,
-            forwardShadingStage().desc,
+            forwardShadingStage(Device::graphicsAPIs().front()).desc,
             toneMappingStage().desc,
             {"test.gbuffer",
              {"visibility", "surface"},

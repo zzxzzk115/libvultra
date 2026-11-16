@@ -1,7 +1,9 @@
 #include <vultra/core/base/logger.hpp>
 #include <vultra/gpu/device.hpp>
 
+#include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <format>
 #include <memory>
 #include <tuple>
@@ -152,15 +154,69 @@ namespace vultra
         }
     } // namespace
 
+    std::string_view graphicsAPIName(VriGraphicsAPI api)
+    {
+        switch (api)
+        {
+            case VriGraphicsAPI_Vulkan:
+                return "vulkan";
+            case VriGraphicsAPI_D3D12:
+                return "d3d12";
+            case VriGraphicsAPI_Metal:
+                return "metal";
+            case VriGraphicsAPI_WebGPU:
+                return "webgpu";
+            case VriGraphicsAPI_OpenGL:
+            case VriGraphicsAPI_OpenGLES:
+                return "opengl";
+            default:
+                return "unknown";
+        }
+    }
+
+    std::optional<VriGraphicsAPI> findGraphicsAPI(std::string_view name)
+    {
+        for (const auto api : Device::graphicsAPIs())
+        {
+            if (graphicsAPIName(api) == name)
+            {
+                return api;
+            }
+        }
+        return std::nullopt;
+    }
+
     std::expected<std::unique_ptr<Device>, Error>
     Device::create(bool validation, const void* nativeCreateInfo, uint64_t features, bool bestEffort)
     {
-        return create(defaultGraphicsAPI(), validation, nativeCreateInfo, features, bestEffort);
+        // VULTRA_GRAPHICS_API narrows automatic selection to one API, for instance to run a program's tests on each.
+        if (const char* requested = std::getenv("VULTRA_GRAPHICS_API"); requested && *requested)
+        {
+            const auto api = findGraphicsAPI(requested);
+            if (!api)
+            {
+                return makeError("VULTRA_GRAPHICS_API={} names no graphics API of this build", requested);
+            }
+            return create(*api, validation, nativeCreateInfo, features, bestEffort);
+        }
+        std::string failures;
+        for (const auto api : graphicsAPIs())
+        {
+            auto device = create(api, validation, nativeCreateInfo, features, bestEffort);
+            if (device)
+            {
+                return device;
+            }
+            Logger::core().info("No {} device: {}", graphicsAPIName(api), device.error().message);
+            failures += std::format("\n  {}: {}", graphicsAPIName(api), device.error().message);
+        }
+        return makeError("No graphics API of this build created a device:{}", failures);
     }
 
-    VriGraphicsAPI Device::defaultGraphicsAPI()
+    std::span<const VriGraphicsAPI> Device::graphicsAPIs()
     {
-        return VULTRA_GRAPHICS_API;
+        static constexpr std::array kAPIs {VULTRA_GRAPHICS_APIS};
+        return kAPIs;
     }
 
     std::expected<std::unique_ptr<Device>, Error> Device::create(VriGraphicsAPI api,
@@ -169,7 +225,21 @@ namespace vultra
                                                                  uint64_t       features,
                                                                  bool           bestEffort)
     {
+        if (std::ranges::find(graphicsAPIs(), api) == graphicsAPIs().end())
+        {
+            std::string built;
+            for (const auto candidate : graphicsAPIs())
+            {
+                built += std::format("{}{}", built.empty() ? "" : ", ", graphicsAPIName(candidate));
+            }
+            return makeError("This build has no {} support (libvultra_graphics_apis: {})", graphicsAPIName(api), built);
+        }
         return create(creationDesc(api, validation, nativeCreateInfo, features, bestEffort), true);
+    }
+
+    VriGraphicsAPI Device::graphicsAPI() const
+    {
+        return core.GetDeviceDesc(handle)->graphicsAPI;
     }
 
     std::expected<std::unique_ptr<Device>, Error> Device::create(const VriDeviceCreationDesc& requested)

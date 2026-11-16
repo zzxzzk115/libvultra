@@ -7,6 +7,9 @@
 #include <array>
 #include <expected>
 #include <memory>
+#include <optional>
+#include <span>
+#include <string_view>
 #include <vector>
 
 namespace vultra
@@ -38,6 +41,13 @@ namespace vultra
         bool     blockCompression    = false; // BC1 to BC7 textures can be sampled.
     };
 
+    // The name of a graphics API in configuration and messages: vulkan, d3d12, metal, webgpu or opengl (OpenGL and
+    // OpenGL ES, including WebGL 2).
+    std::string_view graphicsAPIName(VriGraphicsAPI api);
+    // The API a name selects among those of this build, or nothing when the name is unknown. "opengl" selects
+    // whichever OpenGL flavour the build contains.
+    std::optional<VriGraphicsAPI> findGraphicsAPI(std::string_view name);
+
     // VRI remains the public rendering API. This class only owns the device and its tables. Frames, resources
     // and swapchains keep references to it, so it lives behind a unique_ptr and never moves.
     class Device
@@ -46,19 +56,23 @@ namespace vultra
         [[nodiscard]] static std::expected<std::unique_ptr<Device>, Error> create(const VriDeviceCreationDesc& desc);
         // Convenience creation preserves the builtin shaders' Y-up authoring convention.
         // Strict feature requirements by default; bestEffort enables explicit capability-based selection.
+        // Without an API, the built APIs are tried in graphicsAPIs() order until one creates a device; the environment
+        // variable VULTRA_GRAPHICS_API (vulkan, d3d12, metal, webgpu, opengl) narrows that to one API.
         [[nodiscard]] static std::expected<std::unique_ptr<Device>, Error>
         create(bool        validation       = true,
                const void* nativeCreateInfo = nullptr,
                uint64_t    features         = 0,
                bool        bestEffort       = false);
+        // An API this build does not contain is an error that names it.
         [[nodiscard]] static std::expected<std::unique_ptr<Device>, Error>
         create(VriGraphicsAPI api,
                bool           validation       = true,
                const void*    nativeCreateInfo = nullptr,
                uint64_t       features         = 0,
                bool           bestEffort       = false);
-        // The backend this build selects (libvultra_graphics_api), which create() without an API uses.
-        static VriGraphicsAPI defaultGraphicsAPI();
+        // The graphics APIs this build contains (libvultra_graphics_apis), in the order automatic selection tries
+        // them: Vulkan first where it exists, Metal first on macOS, WebGPU on the Web.
+        static std::span<const VriGraphicsAPI> graphicsAPIs();
         ~Device();
         Device(const Device&)                                             = delete;
         Device&                                  operator=(const Device&) = delete;
@@ -66,6 +80,7 @@ namespace vultra
         // Destructors report completion errors through the log.
         void                  waitIdleForDestruction() const noexcept;
         const DeviceFeatures& features() const;
+        VriGraphicsAPI        graphicsAPI() const;
 
         VriDevice* handle = nullptr;
         VriQueue*  queue  = nullptr;

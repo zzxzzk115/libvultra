@@ -323,14 +323,13 @@ namespace vultra
             if (d3d)
             {
                 target.format = SLANG_DXIL;
-                // Only a D3D12 build compiles Slang's DXIL support in (external/xmake.lua). Slang reports a missing
-                // dxcompiler.dll and missing DXIL support alike, so the build tells them apart.
-                if (Device::defaultGraphicsAPI() != VriGraphicsAPI_D3D12)
+                // Only a build with D3D12 compiles Slang's DXIL support in (external/xmake.lua). Slang reports a
+                // missing dxcompiler.dll and missing DXIL support alike, so the build tells them apart.
+                if (std::ranges::find(Device::graphicsAPIs(), VriGraphicsAPI_D3D12) == Device::graphicsAPIs().end())
                 {
-                    return makeError(
-                        "Compiling {} needs a libvultra_graphics_api=d3d12 build, the only one whose Slang "
-                        "has DXIL support",
-                        program.profile);
+                    return makeError("Compiling {} needs d3d12 among libvultra_graphics_apis, which builds Slang "
+                                     "with DXIL support",
+                                     program.profile);
                 }
                 if (SLANG_FAILED(global->checkCompileTargetSupport(SLANG_DXIL)))
                 {
