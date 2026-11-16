@@ -3,11 +3,13 @@
 #include "support/forward_fixture.hpp"
 
 #include <vultra/assets/asset_pipeline.hpp>
+#include <vultra/assets/asset_source.hpp>
 #include <vultra/render/environment.hpp>
 #include <vultra/render/rendering_server.hpp>
 #include <vultra/render/scene.hpp>
 #include <vultra/render/texture_blit.hpp>
 #include <vultra/render/tone_mapping_pass.hpp>
+#include <vultra/shader/shader_program.hpp>
 
 #include <glm/ext/matrix_clip_space.hpp>
 #include <glm/ext/matrix_transform.hpp>
@@ -16,6 +18,7 @@
 #include <openpbr.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -1463,6 +1466,131 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
 
     // One path, two views: frame stages run once, view stages once per view, and each view equals a
     // render of that view alone.
+    // A material type beyond vultra.openpbr: forward shading cooked with a vultra.materials that knows it calls the
+    // type's surface() and shade() for a material GpuScene::setMaterialType gave it, with the parameters it wrote.
+    void materialType(vultra::Device& device, vultra::Environment& environment, const std::filesystem::path& directory)
+    {
+        using namespace vultra;
+        const auto root = std::filesystem::absolute(directory / "material-type");
+        std::filesystem::create_directories(root / "vultra");
+        std::filesystem::create_directories(root / "test");
+        // Shades every light to its color times a scale, whatever the angle, so the image is known exactly.
+        std::ofstream(root / "test" / "flat.slang") << R"(import vultra.material;
+struct FlatParameters
+{
+    float3 color;
+    float  scale;
+};
+struct Flat : IVultraMaterial
+{
+    FlatParameters parameters;
+    VultraSurface surface(VultraSurfaceInput input)
+    {
+        VultraSurface result = (VultraSurface)0;
+        result.worldPosition = input.vertex.worldPosition;
+        result.normal        = normalize(input.vertex.normal);
+        result.geometricNormal = result.normal;
+        result.baseColor     = parameters.color;
+        result.roughness     = 1;
+        result.specularIor   = 1.5;
+        result.coatIor       = 1.5;
+        result.occlusion     = 1;
+        return result;
+    }
+    float3 shade(VultraSurface surface, float3 toLight, float3 toView)
+    {
+        return surface.baseColor * parameters.scale;
+    }
+};
+)";
+        // What a host generates for vultra.openpbr and test.flat as number 1.
+        std::ofstream(root / "vultra" / "materials.slang") << R"(import vultra.material;
+import test.flat;
+Flat loadFlat(StructuredBuffer<uint> data, uint offset)
+{
+    Flat type;
+    type.parameters.color = asfloat(uint3(data[offset], data[offset + 1], data[offset + 2]));
+    type.parameters.scale = asfloat(data[offset + 3]);
+    return type;
+}
+VultraSurface vultraMaterialSurface(VultraSurfaceInput input)
+{
+    if (material.instance.z == 1)
+    {
+        return loadFlat(materialData, material.instance.w).surface(input);
+    }
+    VultraOpenPbr type;
+    return type.surface(input);
+}
+bool vultraMaterialStandard(uint type)
+{
+    return type != 1;
+}
+float3 vultraMaterialShade(StructuredBuffer<uint> data, VultraMaterialHeader header, VultraSurface surface,
+                           float3 toLight, float3 toView)
+{
+    if (header.type == 1)
+    {
+        return loadFlat(data, header.offset).shade(surface, toLight, toView);
+    }
+    VultraOpenPbr type;
+    return type.shade(surface, toLight, toView);
+}
+)";
+        ShaderCompileOptions options;
+        options.includeDirectories = {root, "builtin/shaders", "external"};
+        options.profile            = shaderProfile(device.graphicsAPI());
+        must(ShaderProgram::cook("builtin/shaders/passes/forward.slang",
+                                 root / "builtin" / "shaders" / "passes" / "forward.vshaderc",
+                                 options));
+        const auto source = must(AssetSource::create(root));
+
+        SceneData scene;
+        scene.vertices   = {{{-2, -2, 0}, {0, 0, 1}, {0, 0}},
+                            {{2, -2, 0}, {0, 0, 1}, {1, 0}},
+                            {{2, 2, 0}, {0, 0, 1}, {1, 1}},
+                            {{-2, 2, 0}, {0, 0, 1}, {0, 1}}};
+        scene.indices    = {0, 1, 2, 0, 2, 3};
+        scene.primitives = {{0, 6, 0}};
+        scene.materials.emplace_back();
+        scene.radius                = 3;
+        const auto              gpu = must(GpuScene::create(device, scene));
+        const glm::vec4         words {0.25f, 0.5f, 1.0f, 2.0f};
+        std::array<uint32_t, 4> block {};
+        std::memcpy(block.data(), &words, sizeof(block));
+        must(gpu->setMaterialType(0, 1, block));
+        require(gpu->materialHeader(0).type == 1 && gpu->materialHeader(0).offset == kOpenPbrParameterWords,
+                "setMaterialType must record the type and append the block after the OpenPBR ones");
+        ForwardFixture renderer(device, *gpu, environment, source.get());
+        renderer.settings.ibl              = false;
+        renderer.settings.skybox           = false;
+        renderer.settings.lightIntensity   = 1;
+        renderer.settings.lightColor       = {1, 1, 1};
+        renderer.settings.directionToLight = {0.4f, 0.6f, 1};
+        const RenderCamera camera {glm::lookAtRH(glm::vec3(0, 0, 3), glm::vec3(0), glm::vec3(0, 1, 0)),
+                                   glm::perspectiveRH_ZO(glm::radians(45.0f), 1.0f, 0.1f, 10.0f),
+                                   0.1f,
+                                   10};
+        RenderGraph        graph(device);
+        const auto         outputs = renderer.addPasses(graph, {33, 33});
+        must(graph.exportResource(outputs.hdr));
+        must(graph.compile());
+        const auto   image  = render(device, renderer, graph, outputs, camera);
+        const size_t center = (16 * 33 + 16) * 4;
+        for (uint32_t channel = 0; channel < 3; ++channel)
+        {
+            const float expected = words[channel] * words[3];
+            if (std::abs(image.rgba[center + channel] - expected) > expected * 1e-3f)
+            {
+                std::cerr << "channel " << channel << ": " << image.rgba[center + channel] << ", expected " << expected
+                          << '\n';
+                support::fail("A material type's shade() did not light the surface with its parameters");
+            }
+        }
+        std::cout << "Material types: forward shading cooked with a dispatch module calls the type's surface() and "
+                     "shade()\n";
+    }
+
     void twoViews(vultra::Device& device, vultra::Environment& environment, const std::filesystem::path& directory)
     {
         using namespace vultra;
@@ -1589,6 +1717,7 @@ int main()
     switchRenderPaths(device, environment, directory);
     pathValidation();
     twoViews(device, environment, directory);
+    materialType(device, environment, directory);
     std::cout << "Forward path tests passed: constant HDR/IBL mip chain, BRDF LUT, upstream OpenPBR C++ reference, "
                  "material textures and live transforms\n";
     return 0;

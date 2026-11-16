@@ -49,7 +49,7 @@ namespace vultra
     // blocks as 32-bit words. Lighting passes read them to call a material type's shade() (vultra.materials).
     inline constexpr std::string_view kSceneMaterials    = "scene.materials";
     inline constexpr std::string_view kSceneMaterialData = "scene.material_data";
-    // RG32_UINT, surface.id: the material number and the primitive of the surface each pixel sees.
+    // R32_UINT, surface.id: the material number of the surface each pixel sees.
     inline constexpr std::string_view kSceneSurfaceId = "scene.surface_id";
     // A constant buffer of CameraData for one view.
     inline constexpr std::string_view kCameraData = "camera.data";
