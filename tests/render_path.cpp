@@ -1561,6 +1561,8 @@ float3 vultraMaterialShade(StructuredBuffer<uint> data, VultraMaterialHeader hea
         must(gpu->setMaterialType(0, 1, block));
         require(gpu->materialHeader(0).type == 1 && gpu->materialHeader(0).offset == kOpenPbrParameterWords,
                 "setMaterialType must record the type and append the block after the OpenPBR ones");
+        require(!gpu->setMaterialType(0, kOpenPbrMaterialType, block) && gpu->materialHeader(0).type == 1,
+                "vultra.openpbr must refuse a parameter block and change nothing");
         ForwardFixture renderer(device, *gpu, environment, source.get());
         renderer.settings.ibl              = false;
         renderer.settings.skybox           = false;
@@ -1587,6 +1589,11 @@ float3 vultraMaterialShade(StructuredBuffer<uint> data, VultraMaterialHeader hea
                 support::fail("A material type's shade() did not light the surface with its parameters");
             }
         }
+        // Back to vultra.openpbr: the kernel allocates the block it fills from the SurfaceMaterial.
+        must(gpu->setMaterialType(0, kOpenPbrMaterialType, {}));
+        require(gpu->materialHeader(0).type == kOpenPbrMaterialType &&
+                    gpu->materialHeader(0).offset == kOpenPbrParameterWords + block.size(),
+                "vultra.openpbr must get a block of its own after the earlier ones");
         std::cout << "Material types: forward shading cooked with a dispatch module calls the type's surface() and "
                      "shade()\n";
     }
