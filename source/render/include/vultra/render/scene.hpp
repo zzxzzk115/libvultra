@@ -77,7 +77,8 @@ namespace vultra
         [[nodiscard]] std::expected<void, Error> beginFrame();
         // Gives a material another type: its number in the vultra.materials of the programs that draw this scene,
         // and its parameter block as 32-bit words. Every material starts as vultra.openpbr with the values of its
-        // SurfaceMaterial; its textures and sidedness stay those of the SurfaceMaterial. Replaces
+        // SurfaceMaterial; its textures and sidedness stay those of the SurfaceMaterial. vultra.openpbr takes no
+        // words: its block is written from the SurfaceMaterial, and words for it are an error. Replaces
         // materialHeaders and materialData, so call it before the scene is bound to a graph.
         [[nodiscard]] std::expected<void, Error>
                               setMaterialType(uint32_t material, uint32_t type, std::span<const uint32_t> parameters);

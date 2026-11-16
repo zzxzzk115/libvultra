@@ -430,9 +430,24 @@ namespace vultra
         {
             return makeError("Set the type of material {}: the scene has {} materials", material, materials.size());
         }
+        // writeMaterials() fills a vultra.openpbr block from the material itself, so it takes no words here.
+        const bool openPbr = type == kOpenPbrMaterialType;
+        if (openPbr && !parameters.empty())
+        {
+            return makeError("Set material {} to vultra.openpbr: its parameters come from its SurfaceMaterial, so pass "
+                             "none",
+                             material);
+        }
         // The new block goes to the end; the old one stays unused in the buffer.
         m_MaterialHeaders[material] = {type, uint32_t(m_MaterialWords.size())};
-        m_MaterialWords.insert(m_MaterialWords.end(), parameters.begin(), parameters.end());
+        if (openPbr)
+        {
+            m_MaterialWords.resize(m_MaterialWords.size() + kOpenPbrParameterWords);
+        }
+        else
+        {
+            m_MaterialWords.insert(m_MaterialWords.end(), parameters.begin(), parameters.end());
+        }
         return uploadMaterials();
     }
 
