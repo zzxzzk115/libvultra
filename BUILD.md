@@ -15,7 +15,7 @@ branch; their instructions below are kept as instructions and marked where they 
 - Linux x86_64 (not re-verified on this branch): C++23 compiler, CMake, pkg-config, Python 3, Vulkan development
   files, X11/Wayland development libraries, wayland-protocols and xkbcommon.
 - macOS arm64: Xcode with its command line tools. Metal, the default there, needs nothing else. The Vulkan
-  backend (`--libvultra_graphics_api=vulkan`) needs the LunarG Vulkan SDK with `VULKAN_SDK` pointing at its
+  backend (`vulkan` in `--libvultra_graphics_apis`) needs the LunarG Vulkan SDK with `VULKAN_SDK` pointing at its
   `macOS` directory; the loader is linked from there. Its programs therefore run only where that SDK is
   installed, unless they sit in an application bundle that carries `libvulkan.1.dylib` and `libMoltenVK.dylib` in
   `Contents/Frameworks` and a MoltenVK driver manifest in `Contents/Resources/vulkan/icd.d`: the library is
@@ -48,8 +48,8 @@ A root build defaults to all modules, all examples and the tests. Configuration 
 | `libvultra_features` | Comma-separated modules: `core`, `platform`, `gpu`, `shader`, `graph`, `assets`, `render`, `ui`, `app`, `xr`, or `all`. Dependencies are added automatically. Root default `all`, embedded default `gpu`. |
 | `libvultra_shader_compiler` | Default on. `n` keeps only the cooked shader runtime: no Slang, no shader hot reload. |
 | `libvultra_asset_import` | Default on. `n` keeps asset values and VPK archives without importers or meshlet building. |
-| `libvultra_with_openxr` | Default on. `n` leaves `xr` out of `all`; selecting `xr` explicitly requires it. `xr` also requires `libvultra_graphics_api=vulkan`: it implements only the OpenXR Vulkan binding, so other APIs leave it out of `all`. |
-| `libvultra_graphics_api` | `metal` (default on macOS) or `vulkan` there; `vulkan` (default) or `webgpu` on other native platforms, the latter through wgpu-native from the `webgpu-sdk` package; `d3d12` on Windows; WebAssembly requires `webgpu` or `webgl2`. |
+| `libvultra_with_openxr` | Default on. `n` leaves `xr` out of `all`; selecting `xr` explicitly requires it. `xr` also requires `vulkan` among `libvultra_graphics_apis`: it implements only the OpenXR Vulkan binding, so a build without Vulkan leaves it out of `all`. |
+| `libvultra_graphics_apis` | Comma-separated graphics APIs built into the library, one chosen at run time ([Graphics APIs](#graphics-apis)): `vulkan`, `d3d12` (Windows), `metal` (macOS), `webgpu` (wgpu-native on the desktop, the browser on WebAssembly), `opengl` (WebAssembly only, as WebGL 2). Empty builds the platform's default: Windows `vulkan,d3d12`, macOS `metal`, WebAssembly `webgpu`, elsewhere `vulkan`. |
 | `libvultra_vri_dir` | Build VRI from a local checkout instead of the pinned release. |
 | `libvultra_build_examples`, `libvultra_build_tests` | Default on at the root, off when embedded. |
 | `libvultra_examples` | `all`, a group (`basics`, `offline`, `ui`), a mode (`basics.vri`) or a comma-separated union. |
@@ -146,12 +146,32 @@ exposed queues; the startup log records the selected GPU, VRAM, queue counts and
 are never dropped from a strict request. An explicit `VriDeviceCreationDesc` keeps its requested adapter.
 `xmake test -v test-device-selection/*` covers selection and unsupported-feature rejection.
 
-## Direct3D 12
+## Graphics APIs
 
-`--libvultra_graphics_api=d3d12` (Windows) compiles shaders to DXIL (shader model 6.6). Slang loads the DirectX
-Shader Compiler at run time, so a program that compiles shaders needs `dxcompiler.dll` on `PATH` or beside the
-executable (the Vulkan SDK and the Windows SDK ship it); cooked packs need no compiler. D3D12 needs VRI v0.2.2
-or later. The `xr` module is not available with D3D12.
+`libvultra_graphics_apis` builds several VRI backends into the library, and a program chooses one when it creates
+its device. `Device::graphicsAPIs()` lists the built APIs in automatic order: Vulkan first where it exists, Metal
+first on macOS, WebGPU on the Web. `Device::create()` without an API tries them in that order, logging each
+failure; the environment variable `VULTRA_GRAPHICS_API` (`vulkan`, `d3d12`, `metal`, `webgpu`, `opengl`) narrows it
+to one, which is how the test programs run on each API. `Device::create(api)` and `Device::create(apis)` take an
+API or an ordered list, and `AppConfig::graphicsAPIs` passes a list to the application classes. An API the build
+does not contain is an error that names it.
+
+What differs between APIs stays in the kernel. `shaderProfile(api)` is the shader target (SPIR-V, DXIL or WGSL)
+and `gbufferLayers(api)` the G-buffer profile. A cooked `.vshaderc` holds one program per target;
+`ShaderProgram::load(file, profile)` picks the device's and names the targets it holds when that one is missing,
+and the builtin pack is cooked for every API of the build (`buildShaderProfiles()`). `shaderSetLayout(api, ...)`
+lays a descriptor set out from a program's reflection so that the API finds each resource at the slot or register
+the shader declares, so callers write no ranges and shaders pin no registers.
+
+OpenGL is accepted on WebAssembly only, as WebGL 2; libvultra has not been run on VRI's desktop and ES OpenGL
+backends.
+
+### Direct3D 12
+
+`d3d12` (Windows) compiles shaders to DXIL (shader model 6.6). Slang loads the DirectX Shader Compiler at run
+time, so a program that compiles shaders needs `dxcompiler.dll` on `PATH` or beside the executable (the Vulkan SDK
+and the Windows SDK ship it); so does the build, which cooks the builtin pack for every API. Cooked packs need no
+compiler. D3D12 needs VRI v0.2.2 or later.
 
 A shader shared between APIs pins its D3D12 registers next to `[[vk::binding]]`, following VRI's mapping: constant
 and storage buffers are root descriptors at the range's `baseRegister`, other resources count from 0 per register
@@ -251,7 +271,7 @@ The shell also needs the emsdk environment (`emsdk_env`): packages built from so
 
 ```sh
 XMAKE_CONFIGDIR="$OUT/web-config" xmake f -y -p wasm -a wasm32 -m release -o "$OUT/web" --emsdk="$EMSDK" \
-    --libvultra_graphics_api=webgpu --libvultra_features=app \
+    --libvultra_graphics_apis=webgpu --libvultra_features=app \
     --libvultra_examples=basics.window,basics.vri,basics.graph --libvultra_example_pack="$OUT/pack-wgsl/project.vpk" \
     --libvultra_shader_compiler=n --libvultra_asset_import=n \
     --libvultra_build_tests=n --libvultra_with_openxr=n
@@ -262,8 +282,8 @@ Serve the generated `.html`, `.js` and `.wasm` together over HTTP and pass the m
 WebGPU build, `window`, `vri` and `graph` were verified in a Chromium-based browser on Windows. `example-offline`,
 selected with `offline`, embeds the same pack and loads its shaders from it unless `--shaders` names another.
 
-Native WebGPU builds the same examples with `--libvultra_graphics_api=webgpu` on a desktop platform; shaders compiled
-at run time then target WGSL. Compute passes with push constants, and storage images in any format but rgba8, need
+Native WebGPU builds the same examples with `webgpu` among `--libvultra_graphics_apis` on a desktop platform;
+shaders compiled at run time for a WebGPU device target WGSL. Compute passes with push constants, and storage images in any format but rgba8, need
 WebGPU fixes in VRI that are not in a VRI release yet. A fragment shader writes `SV_Depth` on a member of its
 output struct: Slang 2026.11 compiles a return value marked `SV_Depth` to a WGSL color output, not `frag_depth`.
 
