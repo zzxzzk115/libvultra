@@ -37,7 +37,7 @@ namespace vultra
         // The path's own inputs are recorded with this slot.
         constexpr size_t kPathSlot = SIZE_MAX;
 
-        const std::array<PathInput, 6> kPathInputs {
+        const std::array<PathInput, 7> kPathInputs {
             PathInput {{std::string(kSceneLights), VriFormat_Unknown, "lights", true, sizeof(GpuLight)},
                        StageScope::eFrame},
             PathInput {{std::string(kSceneEnvironment), VriFormat_RGBA16_SFLOAT, "environment.radiance"},
@@ -49,7 +49,9 @@ namespace vultra
             PathInput {{std::string(kSceneEnvironmentBrdf), VriFormat_RGBA16_SFLOAT, "environment.brdf"},
                        StageScope::eFrame},
             PathInput {{std::string(kCameraData), VriFormat_Unknown, "camera", true, sizeof(CameraData)},
-                       StageScope::eView}};
+                       StageScope::eView},
+            PathInput {{std::string(kViewsData), VriFormat_Unknown, "views", true, sizeof(ViewsData)},
+                       StageScope::eFrame}};
 
         // The radical inverse of `index` in `base`: the Halton sequence's point in that dimension.
         float halton(uint32_t index, uint32_t base)
@@ -427,6 +429,14 @@ namespace vultra
             return std::unexpected(lights.error());
         }
         path->m_Lights = std::move(*lights);
+        auto views     = Buffer::create(
+            device,
+            VriBufferDesc {sizeof(ViewsData), 0, VriBufferUsage_ConstantBuffer, VriMemoryLocation_HostUpload});
+        if (!views)
+        {
+            return std::unexpected(views.error());
+        }
+        path->m_ViewsData = std::make_unique<Buffer>(std::move(*views));
         for (auto& group : groupSlots(path->m_Desc))
         {
             const auto& type = *std::ranges::find(stages,
@@ -601,6 +611,15 @@ namespace vultra
             return std::unexpected(lights.error());
         }
         frame.push_back({std::string(kSceneLights), *lights});
+        if (views.size() <= kViewsDataViews)
+        {
+            const auto viewsData = graph.importResource(std::string(kViewsData), *m_ViewsData);
+            if (!viewsData)
+            {
+                return std::unexpected(viewsData.error());
+            }
+            frame.push_back({std::string(kViewsData), *viewsData});
+        }
         const std::array<std::pair<std::string_view, Texture*>, 4> environmentTextures {
             std::pair {kSceneEnvironment, environment.radiance.get()},
             std::pair {kSceneEnvironmentDiffuse, environment.diffuse.get()},
@@ -651,7 +670,8 @@ namespace vultra
             }
             // A new graph starts without motion: its first frame has no previous camera.
             m_Views[view].frame = 0;
-            m_Views[view].previousViewProjection.reset();
+            m_Views[view].previousView.reset();
+            m_Views[view].previousProjection.reset();
             if (view >= views.size())
             {
                 continue;
@@ -967,6 +987,8 @@ namespace vultra
         {
             jittered.push_back(entry.camera(cameras[entry.view], lights));
         }
+        ViewsData views {};
+        views.viewCount = uint32_t(std::min<size_t>(m_ViewCount, kViewsDataViews));
         for (uint32_t index = 0; index < jittered.size(); ++index)
         {
             auto&      view   = m_Views[index];
@@ -993,7 +1015,9 @@ namespace vultra
             data.inverseView            = glm::inverse(camera.view);
             data.inverseProjection      = glm::inverse(camera.projection);
             data.inverseViewProjection  = glm::inverse(data.viewProjection);
-            data.previousViewProjection = view.previousViewProjection.value_or(unjittered);
+            data.previousViewProjection = view.previousView && view.previousProjection ?
+                                              *view.previousProjection * *view.previousView :
+                                              unjittered;
             data.position               = data.inverseView[3];
             data.imageSize              = {float(view.renderSize.width), float(view.renderSize.height)};
             data.jitter                 = jitter;
@@ -1003,8 +1027,24 @@ namespace vultra
             data.tanHalfAngles          = tangents;
             data.viewIndex              = index;
             data.viewCount              = uint32_t(m_ViewCount);
-            view.previousViewProjection = unjittered;
-            auto* mapped                = m_Device.core.MapBuffer(view.camera->handle, 0, sizeof(data));
+            if (index < m_ViewCount && index < kViewsDataViews)
+            {
+                auto& entry                  = views.views[index];
+                entry.view                   = data.view;
+                entry.projection             = data.projection;
+                entry.viewProjection         = data.viewProjection;
+                entry.inverseView            = data.inverseView;
+                entry.inverseProjection      = data.inverseProjection;
+                entry.inverseViewProjection  = data.inverseViewProjection;
+                entry.previousView           = view.previousView.value_or(cameras[index].view);
+                entry.previousProjection     = view.previousProjection.value_or(cameras[index].projection);
+                entry.previousViewProjection = data.previousViewProjection;
+                entry.position               = data.position;
+                entry.tanHalfAngles          = data.tanHalfAngles;
+            }
+            view.previousView       = cameras.size() > index ? cameras[index].view : camera.view;
+            view.previousProjection = cameras.size() > index ? cameras[index].projection : camera.projection;
+            auto* mapped            = m_Device.core.MapBuffer(view.camera->handle, 0, sizeof(data));
             if (!mapped)
             {
                 return makeError("Map the camera constants of render path {}", m_Desc.name);
@@ -1012,6 +1052,13 @@ namespace vultra
             std::memcpy(mapped, &data, sizeof(data));
             m_Device.core.UnmapBuffer(view.camera->handle);
         }
+        auto* mappedViews = m_Device.core.MapBuffer(m_ViewsData->handle, 0, sizeof(views));
+        if (!mappedViews)
+        {
+            return makeError("Map the view constants of render path {}", m_Desc.name);
+        }
+        std::memcpy(mappedViews, &views, sizeof(views));
+        m_Device.core.UnmapBuffer(m_ViewsData->handle);
         for (auto& instance : m_Stages)
         {
             // A display stage the caller did not add to this graph has nothing to prepare.
