@@ -169,7 +169,8 @@ namespace vultra
 
     std::string StageBuild::graphName(std::string_view name) const
     {
-        if (!view || views.size() < 2)
+        const auto own = pathViews == 0 ? views.size() : pathViews;
+        if (!view || (*view < own && own < 2))
         {
             return std::string(name);
         }
@@ -314,6 +315,47 @@ namespace vultra
                 }
             }
         }
+        // An auxiliary view runs view stages of the path that do not ask for views themselves.
+        for (const auto& group : groups)
+        {
+            const auto* desc = findStage(stages, path.slots[group.front()].stage);
+            if (!desc)
+            {
+                continue;
+            }
+            for (const auto& view : desc->auxiliaryViews)
+            {
+                for (const auto& slot : view.slots)
+                {
+                    const auto  found = std::ranges::find(path.slots, slot, &PathSlot::slot);
+                    const auto* used  = found == path.slots.end() ? nullptr : findStage(stages, found->stage);
+                    std::string problem;
+                    if (found == path.slots.end())
+                    {
+                        problem = "the path has no slot '" + slot + "'";
+                    }
+                    else if (size_t(found - path.slots.begin()) > group.front())
+                    {
+                        problem = "slot '" + slot + "' comes after it";
+                    }
+                    else if (used && used->scope != StageScope::eView)
+                    {
+                        problem = "slot '" + slot + "' holds the frame stage '" + used->name + "'";
+                    }
+                    else if (used && !used->auxiliaryViews.empty())
+                    {
+                        problem = "slot '" + slot + "' holds '" + used->name + "', which asks for views itself";
+                    }
+                    if (!problem.empty())
+                    {
+                        issues.push_back(
+                            {PathIssueKind::eAuxiliaryView,
+                             group.front(),
+                             "stage '" + desc->name + "' renders the view '" + view.name + "', but " + problem});
+                    }
+                }
+            }
+        }
         // One sequence offsets every view stage's projection, so one stage chooses it.
         std::optional<size_t> jittered;
         for (const auto& group : groups)
@@ -327,8 +369,8 @@ namespace vultra
             {
                 issues.push_back({PathIssueKind::eDuplicateJitter,
                                   group.front(),
-                                  "stage '" + desc->name + "' asks for jitter, which " +
-                                      describe(path, *jittered) + " asks for already"});
+                                  "stage '" + desc->name + "' asks for jitter, which " + describe(path, *jittered) +
+                                      " asks for already"});
             }
             jittered = group.front();
         }
@@ -544,8 +586,28 @@ namespace vultra
             }
             frame.push_back({std::string(name), *imported});
         }
-        std::vector<SceneResources> perView(views.size());
+        // Every view of the graph: the path's, then for each of them the auxiliary views its stages declare, so that a
+        // stage's first call knows how many views it serves.
+        m_ViewDescs = {views.begin(), views.end()};
+        m_Auxiliary.clear();
         for (uint32_t view = 0; view < views.size(); ++view)
+        {
+            for (size_t index = 0; index < m_Stages.size(); ++index)
+            {
+                for (const auto& declared : m_Stages[index].desc.auxiliaryViews)
+                {
+                    const auto name = views.size() == 1 ? declared.name : views[view].name + "." + declared.name;
+                    m_Auxiliary.push_back({view, index, declared.name, {}});
+                    m_ViewDescs.push_back({name, {}});
+                }
+            }
+        }
+        for (auto& instance : m_Stages)
+        {
+            instance.auxiliary.clear();
+        }
+        std::vector<SceneResources> perView(views.size());
+        for (uint32_t view = 0; view < m_ViewDescs.size(); ++view)
         {
             if (m_Views.size() <= view)
             {
@@ -559,18 +621,103 @@ namespace vultra
                 m_Views.push_back({std::make_unique<Buffer>(std::move(*camera))});
             }
             // A new graph starts without motion: its first frame has no previous camera.
+            m_Views[view].frame = 0;
+            m_Views[view].previousViewProjection.reset();
+            if (view >= views.size())
+            {
+                continue;
+            }
             m_Views[view].size       = views[view].size;
             m_Views[view].renderSize = renderSizes[view];
-            m_Views[view].frame      = 0;
-            m_Views[view].previousViewProjection.reset();
-            const StageBuild naming {graph, scene, environment, views, view, {}};
-            const auto       camera = graph.importResource(naming.graphName(kCameraData), *m_Views[view].camera);
+            StageBuild naming {graph, scene, environment, m_ViewDescs, view, {}};
+            naming.pathViews  = views.size();
+            const auto camera = graph.importResource(naming.graphName(kCameraData), *m_Views[view].camera);
             if (!camera)
             {
                 return std::unexpected(camera.error());
             }
             perView[view].push_back({std::string(kCameraData), *camera});
         }
+        // Renders an auxiliary view that stage `requester` declares for view `view`: the stages of its slots, in the
+        // path's order, see the frame's resources, the view's camera.data and what the stages before them provided.
+        const auto auxiliary = [&](size_t           requester,
+                                   uint32_t         view,
+                                   std::string_view name,
+                                   Extent           size,
+                                   AuxiliaryCamera  camera) -> std::expected<SceneResources, Error>
+        {
+            const auto found = std::ranges::find_if(m_Auxiliary,
+                                                    [&](const Auxiliary& entry)
+                                                    {
+                                                        return entry.requester == requester && entry.view == view &&
+                                                               entry.name == name;
+                                                    });
+            if (found == m_Auxiliary.end() || found->camera)
+            {
+                return makeError("Stage {} renders the auxiliary view {} once per view, and only one it declares",
+                                 m_Stages[requester].desc.name,
+                                 name);
+            }
+            if (size.empty() || !camera)
+            {
+                return makeError("Stage {}: the auxiliary view {} needs a size and a camera",
+                                 m_Stages[requester].desc.name,
+                                 name);
+            }
+            const auto index          = uint32_t(views.size() + size_t(found - m_Auxiliary.begin()));
+            found->camera             = std::move(camera);
+            m_ViewDescs[index].size   = size;
+            m_Views[index].size       = size;
+            m_Views[index].renderSize = size;
+            StageBuild naming {graph, scene, environment, m_ViewDescs, index, {}};
+            naming.pathViews      = views.size();
+            const auto cameraData = graph.importResource(naming.graphName(kCameraData), *m_Views[index].camera);
+            if (!cameraData)
+            {
+                return std::unexpected(cameraData.error());
+            }
+            SceneResources visible = frame;
+            visible.push_back({std::string(kCameraData), *cameraData});
+            SceneResources result {{std::string(name) + ":" + std::string(kCameraData), *cameraData}};
+            const auto&    declared =
+                *std::ranges::find(m_Stages[requester].desc.auxiliaryViews, name, &AuxiliaryViewDesc::name);
+            for (size_t stage = 0; stage < m_Stages.size(); ++stage)
+            {
+                auto&      instance = m_Stages[stage];
+                const bool runs =
+                    std::ranges::any_of(instance.slots,
+                                        [&](size_t slot)
+                                        {
+                                            return std::ranges::contains(declared.slots, m_Desc.slots[slot].slot);
+                                        });
+                if (!runs)
+                {
+                    continue;
+                }
+                // The stage returns what it returns for the path's views: one stage instance decides once per graph
+                // which of its optional outputs it writes.
+                StageBuild build {graph, scene, environment, m_ViewDescs, index, visible, requests[stage]};
+                build.pathViews  = views.size();
+                build.size       = size;
+                build.outputSize = size;
+                auto added       = instance.stage->addPasses(build);
+                if (!added)
+                {
+                    return std::unexpected(added.error());
+                }
+                if (auto valid = checkProvided(instance.desc, *added, requests[stage], graph); !valid)
+                {
+                    return std::unexpected(valid.error());
+                }
+                instance.auxiliary.push_back(index);
+                visible.insert(visible.end(), added->begin(), added->end());
+                for (const auto& [resource, handle] : *added)
+                {
+                    result.push_back({std::string(name) + ":" + resource, handle});
+                }
+            }
+            return result;
+        };
         for (size_t index = 0; index < m_Stages.size(); ++index)
         {
             auto& instance = m_Stages[index];
@@ -582,8 +729,9 @@ namespace vultra
             }
             if (instance.desc.scope == StageScope::eFrame)
             {
-                StageBuild build {graph, scene, environment, views, std::nullopt, frame, requests[index]};
-                auto       added = instance.stage->addPasses(build);
+                StageBuild build {graph, scene, environment, m_ViewDescs, std::nullopt, frame, requests[index]};
+                build.pathViews = views.size();
+                auto added      = instance.stage->addPasses(build);
                 if (!added)
                 {
                     return std::unexpected(added.error());
@@ -599,10 +747,19 @@ namespace vultra
             {
                 SceneResources visible = frame;
                 visible.insert(visible.end(), perView[view].begin(), perView[view].end());
-                StageBuild build {graph, scene, environment, views, view, visible, requests[index]};
+                StageBuild build {graph, scene, environment, m_ViewDescs, view, visible, requests[index]};
+                build.pathViews  = views.size();
                 build.size       = sizeOf(index, view);
                 build.outputSize = views[view].size;
-                auto added       = instance.stage->addPasses(build);
+                if (!instance.desc.auxiliaryViews.empty())
+                {
+                    build.addView =
+                        [&auxiliary, index, view](std::string_view name, Extent size, AuxiliaryCamera camera)
+                    {
+                        return auxiliary(index, view, name, size, std::move(camera));
+                    };
+                }
+                auto added = instance.stage->addPasses(build);
                 if (!added)
                 {
                     return std::unexpected(added.error());
@@ -628,8 +785,16 @@ namespace vultra
             }
             resources.insert(resources.begin(), frame.begin(), frame.end());
         }
+        for (const auto& entry : m_Auxiliary)
+        {
+            if (!entry.camera)
+            {
+                return makeError("Stage {} declares the auxiliary view {} but did not render it",
+                                 m_Stages[entry.requester].desc.name,
+                                 entry.name);
+            }
+        }
         m_ViewCount   = views.size();
-        m_ViewDescs   = {views.begin(), views.end()};
         m_Scene       = &scene;
         m_Environment = &environment;
         return perView;
@@ -657,6 +822,7 @@ namespace vultra
         {
             const SceneResources shown {{std::string(kSceneOutput), outputs[view]}};
             StageBuild           build {graph, *m_Scene, *m_Environment, m_ViewDescs, view, shown, requested, format};
+            build.pathViews  = m_ViewCount;
             build.size       = m_ViewDescs[view].size;
             build.outputSize = m_ViewDescs[view].size;
             auto added       = display->stage->addPasses(build);
@@ -745,15 +911,20 @@ namespace vultra
         {
             return written;
         }
-        // The stages see the cameras with this frame's jitter in their projection.
+        // The stages see the cameras with this frame's jitter in their projection, then the auxiliary views' cameras,
+        // which their requesters compute from the unjittered camera of the view they serve.
         std::vector<RenderCamera> jittered(cameras.begin(), cameras.end());
-        for (uint32_t index = 0; index < cameras.size(); ++index)
+        for (const auto& entry : m_Auxiliary)
+        {
+            jittered.push_back(entry.camera(cameras[entry.view], lights));
+        }
+        for (uint32_t index = 0; index < jittered.size(); ++index)
         {
             auto&      view   = m_Views[index];
             auto&      camera = jittered[index];
             glm::vec2  jitter {0};
             const auto unjittered = camera.projection * camera.view;
-            if (m_Jitter != 0)
+            if (m_Jitter != 0 && index < cameras.size())
             {
                 // Halton (2, 3) from its second point, which skips the corner (0, 0), centred on the pixel.
                 const uint32_t point = view.frame % m_Jitter + 1;
@@ -810,6 +981,15 @@ namespace vultra
             {
                 if (auto prepared =
                         instance.stage->prepare(graph, {jittered, view, lights, *m_Lights, instance.parameters});
+                    !prepared)
+                {
+                    return prepared;
+                }
+            }
+            for (const auto view : instance.auxiliary)
+            {
+                if (auto prepared =
+                        instance.stage->prepare(graph, {jittered, view, lights, *m_Lights, instance.parameters, true});
                     !prepared)
                 {
                     return prepared;

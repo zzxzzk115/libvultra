@@ -42,6 +42,9 @@ namespace vultra
     inline constexpr std::string_view kFinal = "final";
     // The last slot of a path: its stage turns scene.output into final after the project's graph has run.
     inline constexpr std::string_view kDisplaySlot = "display";
+    // R32_SFLOAT, shadow.mask: how much of the main directional light each pixel of a view does not receive, 1 in
+    // full shadow; zero where no stage provides it.
+    inline constexpr std::string_view kSceneShadowMask = "scene.shadow_mask";
     // The slot that turns the render size into the output size: the stages up to it render at a view's render size,
     // the stages after it at its output size.
     inline constexpr std::string_view kUpscaleSlot    = "upscale";
@@ -127,6 +130,14 @@ namespace vultra
         bool optional = false;
     };
 
+    // A view a stage renders besides the path's own, such as a shadow map's light view: the path runs the stages of
+    // its slots for it. Its size and camera come from the stage when it builds.
+    struct AuxiliaryViewDesc
+    {
+        std::string              name;
+        std::vector<std::string> slots; // Slots of the path, usually only "visibility".
+    };
+
     // What a stage reads and writes, known without a device so that paths can be checked offline.
     struct StageDesc
     {
@@ -144,7 +155,15 @@ namespace vultra
         // A stage in the upscale slot: the render scales (render size over output size) it accepts.
         float minimumScale = 1;
         float maximumScale = 1;
+        // A view stage: the auxiliary views it renders for each of the path's views. The stages in their slots may
+        // not ask for views of their own.
+        std::vector<AuxiliaryViewDesc> auxiliaryViews;
     };
+
+    struct StageBuild;
+
+    // This frame's camera of an auxiliary view, from the camera of the view it was asked for and the scene's lights.
+    using AuxiliaryCamera = std::function<RenderCamera(const RenderCamera& view, std::span<const RenderLight> lights)>;
 
     // One image a path renders. With several views, view resources are named "<view>:<resource>" in the graph.
     struct RenderView
@@ -158,9 +177,10 @@ namespace vultra
 
     struct StageBuild
     {
-        RenderGraph&                graph;
-        GpuScene&                   scene;
-        Environment&                environment;
+        RenderGraph& graph;
+        GpuScene&    scene;
+        Environment& environment;
+        // Every view of the graph: the path's own, then the auxiliary views its stages render.
         std::span<const RenderView> views;
         std::optional<uint32_t>     view; // The view a view stage builds; empty for a frame stage.
         // What earlier stages provided that this stage may read: frame resources and those of its own view.
@@ -175,10 +195,18 @@ namespace vultra
         // after it, and the view's output size, which the upscale stage writes. Empty for a frame stage.
         Extent size {};
         Extent outputSize {};
+        // A view stage of one of the path's views: renders the auxiliary view `name` its description declares, at
+        // `size` with `camera`, by running the stages of its slots, and returns what they provide, camera.data among
+        // it, as "<name>:<resource>". Empty for a stage that renders an auxiliary view itself.
+        std::function<std::expected<SceneResources, Error>(std::string_view name, Extent size, AuxiliaryCamera camera)>
+            addView;
+        // How many of `views` are the path's own; zero when all are.
+        size_t pathViews = 0;
 
         bool requests(std::string_view name) const;
 
-        // The graph name of a resource or pass this stage adds: prefixed by the view's name when there are several.
+        // The graph name of a resource or pass this stage adds: prefixed by the view's name when the path has several
+        // views or the view is auxiliary.
         std::string graphName(std::string_view name) const;
     };
 
@@ -189,6 +217,8 @@ namespace vultra
         std::span<const RenderLight>  lights;
         const LightBuffer&            lightBuffer; // The path's scene.lights, written for this frame.
         std::span<const double>       parameters;  // This stage's values, in the order of its parameters.
+        // `view` is an auxiliary view: no motion feedback, no jitter, no temporal accumulation.
+        bool auxiliary = false;
     };
 
     // A part of a render technique that fills one or more slots of a path. One instance serves every view of
@@ -249,7 +279,9 @@ namespace vultra
         eDuplicateProvide, // Two stages provide the same resource.
         eFrameNeedsView,   // A frame stage needs a resource of a view stage.
         eDisplayNotLast,   // The display slot is not the last one.
-        eDuplicateJitter   // More than one stage asks for jitter.
+        eDuplicateJitter,  // More than one stage asks for jitter.
+        eAuxiliaryView     // An auxiliary view names a slot the path does not have, one after its stage, a frame
+                           // stage's, or one whose stage asks for auxiliary views itself.
     };
 
     struct PathIssue
@@ -332,6 +364,16 @@ namespace vultra
             std::unique_ptr<RenderStage> stage;
             std::vector<double>          parameters;    // Current values, in the order of desc.parameters.
             bool                         built = false; // Whether this graph has the stage's passes.
+            std::vector<uint32_t>        auxiliary;     // The auxiliary views this graph runs the stage for.
+        };
+
+        // An auxiliary view of this graph: the view it is rendered for and its camera, once its requester built it.
+        struct Auxiliary
+        {
+            uint32_t        view;
+            size_t          requester; // Index into m_Stages.
+            std::string     name;
+            AuxiliaryCamera camera;
         };
 
         // The constants of one view and the camera of its last frame, without jitter.
@@ -353,8 +395,9 @@ namespace vultra
         std::vector<Instance>          m_Stages;
         std::vector<SceneResourceDesc> m_Provides;
         size_t                         m_ViewCount = 0;
-        std::vector<RenderView>        m_ViewDescs;       // The views of the current graph, for the display stage.
-        uint32_t                       m_Jitter      = 0; // The jitter one stage asks for.
+        std::vector<RenderView>        m_ViewDescs; // The views of the current graph, auxiliary ones after the path's.
+        std::vector<Auxiliary>         m_Auxiliary; // Indexed by view - m_ViewCount.
+        uint32_t                       m_Jitter      = 0;       // The jitter one stage asks for.
         GpuScene*                      m_Scene       = nullptr; // Of the current graph.
         Environment*                   m_Environment = nullptr;
     };

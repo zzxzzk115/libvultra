@@ -1676,6 +1676,168 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
         std::cout << "Render path validation: every problem kind found from descriptions alone\n";
     }
 
+    // A stage that renders the auxiliary view "probe" through the path's shading slot with a fixed camera and
+    // keeps its scene.hdr.
+    class ProbeStage final : public vultra::RenderStage
+    {
+    public:
+        struct Seen
+        {
+            std::vector<vultra::RenderGraph::Resource> hdr;    // One per view of the path.
+            std::vector<bool>                          frames; // StageFrame::auxiliary of each prepare.
+        };
+
+        static vultra::StageDesc desc()
+        {
+            vultra::StageDesc result {"test.probe", {"probe"}, vultra::StageScope::eView, {}, {}};
+            result.auxiliaryViews = {{"probe", {"shading"}}};
+            return result;
+        }
+
+        static vultra::StageType type(Seen& seen, vultra::RenderCamera camera)
+        {
+            return {desc(),
+                    [&seen, camera](vultra::Device&, const vultra::AssetSource*)
+                        -> std::expected<std::unique_ptr<vultra::RenderStage>, vultra::Error>
+                    {
+                        return std::make_unique<ProbeStage>(seen, camera);
+                    }};
+        }
+
+        ProbeStage(Seen& seen, vultra::RenderCamera camera) :
+            m_Seen(seen),
+            m_Camera(camera)
+        {
+        }
+
+        std::expected<vultra::SceneResources, vultra::Error> addPasses(vultra::StageBuild& build) override
+        {
+            using namespace vultra;
+            const auto rendered = build.addView("probe",
+                                                {65, 65},
+                                                [camera = m_Camera](const RenderCamera&, std::span<const RenderLight>)
+                                                {
+                                                    return camera;
+                                                });
+            if (!rendered)
+            {
+                return std::unexpected(rendered.error());
+            }
+            const auto hdr = findSceneResource(*rendered, "probe:" + std::string(kSceneHdr));
+            if (!hdr)
+            {
+                return std::unexpected(hdr.error());
+            }
+            m_Seen.hdr.push_back(*hdr);
+            return SceneResources {};
+        }
+
+        std::expected<void, vultra::Error> prepare(vultra::RenderGraph&, const vultra::StageFrame& frame) override
+        {
+            m_Seen.frames.push_back(frame.auxiliary);
+            return {};
+        }
+
+    private:
+        Seen&                m_Seen;
+        vultra::RenderCamera m_Camera;
+    };
+
+    // An auxiliary view: a stage renders the path's shading slot once more for each view with a camera
+    // of its own, under "<view>.probe:" names, and gets the image the path renders with that camera alone. A slot
+    // after the stage, a missing one and a stage asking for views itself are refused.
+    void auxiliaryView(vultra::Device& device, vultra::Environment& environment)
+    {
+        using namespace vultra;
+        const auto       gpu         = must(GpuScene::create(device, quadScene()));
+        const auto       probeCamera = quadCamera({0.6f, 0.4f, 6});
+        ProbeStage::Seen seen;
+        const std::array stages {meshStage(),
+                                 forwardShadingStage(device.graphicsAPI()),
+                                 ProbeStage::type(seen, probeCamera)};
+        const auto       path                                                   = must(RenderPath::create(
+            device,
+            {"test.probed",
+                                                                     {{"geometry", "vultra.mesh"}, {"shading", "vultra.forward_shading"}, {"probe", "test.probe"}}},
+            stages));
+        static_cast<ForwardShadingStage*>(path->stage("shading"))->settings.ibl = false;
+        const std::array views {RenderView {"left", {65, 65}}, RenderView {"right", {65, 65}}};
+        const std::array cameras {quadCamera({-0.4f, 0.2f, 6}), quadCamera({0.4f, -0.3f, 7})};
+
+        RenderGraph graph(device);
+        const auto  resources = must(path->addPasses(graph, *gpu, environment, views));
+        require(resources.size() == 2 && seen.hdr.size() == 2, "The probe stage did not render once per view");
+        std::vector<RenderGraph::Resource> outputs;
+        for (const auto& view : resources)
+        {
+            outputs.push_back(must(findSceneResource(view, kSceneHdr)));
+        }
+        outputs.insert(outputs.end(), seen.hdr.begin(), seen.hdr.end());
+        for (const auto output : outputs)
+        {
+            must(graph.exportResource(output));
+        }
+        must(graph.compile());
+        const auto passes = graph.activePasses();
+        for (const std::string name : {"left:Forward", "right:Forward", "left.probe:Forward", "right.probe:Forward"})
+        {
+            require(std::ranges::contains(passes, name), "The graph has no pass " + name);
+        }
+        must(path->prepare(graph, cameras, {}));
+        require(seen.frames == std::vector<bool> {false, false},
+                "A requesting stage must be prepared for the path's views only");
+        const auto frame = must(Frame::create(device));
+        run(*frame, graph);
+        std::vector<Image> images;
+        for (const auto output : outputs)
+        {
+            images.push_back(must(readback(device, graph.getTexture(output))));
+            finite(images.back());
+        }
+
+        const auto forward                                                         = must(createForwardPath(device));
+        static_cast<ForwardShadingStage*>(forward->stage("shading"))->settings.ibl = false;
+        const RenderView alone {"main", {65, 65}};
+        const auto       probe =
+            renderViews(device, *forward, *gpu, environment, std::span(&alone, 1), std::span(&probeCamera, 1));
+        for (size_t view = 0; view < views.size(); ++view)
+        {
+            const auto single =
+                renderViews(device, *forward, *gpu, environment, std::span(&alone, 1), std::span(&cameras[view], 1));
+            require(images[view].rgba == single.front().rgba, "A path's view changed when a stage added a probe");
+            require(images[2 + view].rgba == probe.front().rgba,
+                    "An auxiliary view differs from rendering its camera alone");
+        }
+        require(images[0].rgba != probe.front().rgba, "The probe camera rendered the same image as the left view");
+
+        std::vector<StageDesc> descs {meshStage().desc,
+                                      forwardShadingStage(device.graphicsAPI()).desc,
+                                      ProbeStage::desc()};
+        const auto             issue = [&](std::vector<PathSlot> slots, std::string_view text)
+        {
+            const auto found = validateRenderPath({"test.path", std::move(slots)}, descs);
+            return std::ranges::any_of(found,
+                                       [&](const PathIssue& entry)
+                                       {
+                                           return entry.kind == PathIssueKind::eAuxiliaryView &&
+                                                  entry.message.find(text) != std::string::npos;
+                                       });
+        };
+        require(issue({{"geometry", "vultra.mesh"}, {"probe", "test.probe"}, {"shading", "vultra.forward_shading"}},
+                      "slot 'shading' comes after it"),
+                "A probe before its shading slot must be refused");
+        require(issue({{"geometry", "vultra.mesh"}, {"probe", "test.probe"}}, "the path has no slot 'shading'"),
+                "A probe without a shading slot must be refused");
+        auto nested  = ProbeStage::desc();
+        nested.name  = "test.nested";
+        nested.slots = {"shading"};
+        descs.push_back(nested);
+        require(issue({{"geometry", "vultra.mesh"}, {"shading", "test.nested"}, {"probe", "test.probe"}},
+                      "which asks for views itself"),
+                "A probe of a stage that asks for views itself must be refused");
+        std::cout << "Auxiliary view: rendered per view under <view>.probe, equal to its camera rendered alone\n";
+    }
+
     // One path, two views: frame stages run once, view stages once per view, and each view equals a
     // render of that view alone.
     // A material type beyond vultra.openpbr: forward shading cooked with a vultra.materials that knows it calls the
@@ -1937,6 +2099,7 @@ int main()
     switchRenderPaths(device, environment, directory);
     pathValidation();
     twoViews(device, environment, directory);
+    auxiliaryView(device, environment);
     materialType(device, environment, directory);
     std::cout << "Forward path tests passed: constant HDR/IBL mip chain, BRDF LUT, upstream OpenPBR C++ reference, "
                  "material textures and live transforms\n";

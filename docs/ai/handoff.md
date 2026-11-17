@@ -84,6 +84,10 @@ Added:
   `previousViewProjection` without jitter, so forward's and the sky's motion subtract it), `StageDesc::minimumScale`
   and `maximumScale`, `PathIssueKind::eDuplicateJitter`. The standard upscale stage, `vultra.temporal`, is a pass
   shader in Vultra-Packages.
+- M8 part d2, kernel side (2026-11-17): auxiliary views (`StageDesc::auxiliaryViews`, `StageBuild::addView`,
+  `AuxiliaryCamera`, `StageFrame::auxiliary`, `StageBuild::pathViews`, `PathIssueKind::eAuxiliaryView`) and the
+  standard name `scene.shadow_mask`. The shadow map stage that uses them, `vultra.shadow_map`, is in
+  Vultra-Packages.
 - Slang user-attribute and field-initializer reflection, stored in cooked programs.
 - A render graph execution plan with batches per queue, async compute through `execute(Frame&)`, and
   `writeDot()`.
