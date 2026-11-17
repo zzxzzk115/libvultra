@@ -1,10 +1,13 @@
 #include "support/check.hpp"
 
+#include <vultra/gpu/buffer_upload.hpp>
 #include <vultra/gpu/image_readback.hpp>
 #include <vultra/graph/render_graph.hpp>
 
 #include <array>
+#include <cstring>
 #include <iostream>
+#include <memory>
 
 namespace
 {
@@ -345,6 +348,99 @@ namespace
     }
 } // namespace
 
+namespace
+{
+    // Two history buffers, as two views keep them: each holds what the previous frame wrote into it, apart from the
+    // other, and both are zero again after resetHistory().
+    void historyBuffers(Device& device)
+    {
+        constexpr uint64_t                     bytes = 16 * sizeof(uint32_t);
+        const VriBufferDesc                    kept {bytes,
+                                  sizeof(uint32_t),
+                                  VriBufferUsage_StorageBuffer | VriBufferUsage_TransferDst |
+                                      VriBufferUsage_TransferSrc,
+                                  VriMemoryLocation_Device};
+        const VriBufferDesc                    seen {bytes,
+                                  sizeof(uint32_t),
+                                  VriBufferUsage_TransferDst | VriBufferUsage_TransferSrc,
+                                  VriMemoryLocation_Device};
+        RenderGraph                            graph(device);
+        std::array<RenderGraph::Resource, 2>   histories {};
+        std::array<RenderGraph::Resource, 2>   observed {};
+        std::array<std::unique_ptr<Buffer>, 2> sources;
+        for (size_t view = 0; view < 2; ++view)
+        {
+            const auto name = std::string(view == 0 ? "left" : "right");
+            histories[view] = must(graph.createHistoryBuffer(name + ":history", kept));
+            observed[view]  = must(graph.createBuffer(name + ":previous", seen));
+            sources[view]   = std::make_unique<Buffer>(
+                must(Buffer::create(device, {bytes, 0, VriBufferUsage_TransferSrc, VriMemoryLocation_HostUpload})));
+            must(graph.addPass(name + ":Read previous frame",
+                               {{histories[view], Usage::eCopySource}, {observed[view], Usage::eCopyDestination}},
+                               [&, view](VriCommandBuffer* cmd, RenderGraph& current) -> std::expected<void, Error>
+                               {
+                                   const VriBufferCopyDesc region {0, 0, bytes};
+                                   device.core.CmdCopyBuffer(cmd,
+                                                             current.getBuffer(observed[view]).handle,
+                                                             current.getBuffer(histories[view]).handle,
+                                                             &region);
+                                   return {};
+                               }));
+            must(graph.addPass(name + ":Store next frame",
+                               {{histories[view], Usage::eCopyDestination}},
+                               [&, view](VriCommandBuffer* cmd, RenderGraph& current) -> std::expected<void, Error>
+                               {
+                                   const VriBufferCopyDesc region {0, 0, bytes};
+                                   device.core.CmdCopyBuffer(cmd,
+                                                             current.getBuffer(histories[view]).handle,
+                                                             sources[view]->handle,
+                                                             &region);
+                                   return {};
+                               }));
+            must(graph.exportResource(observed[view]));
+        }
+        must(graph.compile(true));
+        require(must(graph.resourceInfo(histories[0])).history, "A history buffer lost its identity");
+        const auto write = [&](uint32_t left, uint32_t right)
+        {
+            for (size_t view = 0; view < 2; ++view)
+            {
+                std::array<uint32_t, 16> values {};
+                values.fill(view == 0 ? left : right);
+                auto* mapped = device.core.MapBuffer(sources[view]->handle, 0, bytes);
+                std::memcpy(mapped, values.data(), bytes);
+                device.core.UnmapBuffer(sources[view]->handle);
+            }
+        };
+        const auto previous = [&](size_t view)
+        {
+            const auto data  = must(readbackBuffer(device, graph.getBuffer(observed[view])));
+            uint32_t   first = 0;
+            uint32_t   last  = 0;
+            std::memcpy(&first, data.data(), sizeof(first));
+            std::memcpy(&last, data.data() + bytes - sizeof(last), sizeof(last));
+            require(first == last, "A history buffer was copied in part");
+            return first;
+        };
+        const auto frame = must(Frame::create(device));
+        const auto epoch = graph.historyEpoch();
+        for (const auto& [left, right, seenLeft, seenRight] :
+             {std::array<uint32_t, 4> {7, 70, 0, 0}, {8, 80, 7, 70}, {9, 90, 8, 80}})
+        {
+            write(left, right);
+            run(*frame, graph);
+            require(previous(0) == seenLeft && previous(1) == seenRight,
+                    "A history buffer did not start at zero, keep last frame's content, or keep it apart");
+        }
+        graph.resetHistory();
+        require(graph.historyEpoch() == epoch + 1, "History reset did not advance its epoch");
+        run(*frame, graph);
+        require(previous(0) == 0 && previous(1) == 0, "History reset did not zero the history buffers");
+        RenderGraph refused(device);
+        require(!refused.createHistoryBuffer("hostile", seen), "A history buffer without storage usage was accepted");
+    }
+} // namespace
+
 int main()
 {
     const auto device = must(vultra::Device::create());
@@ -355,6 +451,7 @@ int main()
     partialCopy(*device);
     invalidDiscard(*device);
     history(*device);
+    historyBuffers(*device);
     const auto separate = transientReuse(*device, false);
     const auto aliased  = transientReuse(*device, true);
     transientReuse(*device, true, true);

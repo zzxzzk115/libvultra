@@ -129,7 +129,9 @@ Dependencies, culling, history, async-compute handoffs and barriers work per mip
 one mip and write the next of the same texture; the uses of one pass must not overlap. A 3D texture has no layers,
 and its depth slices share their mip's state. `Texture` keeps that state, and `Texture::view()` makes a view of a
 range; a single layer is viewed as 2D, and a cube's faces can be viewed as a 2D array for storage access. History
-is reset in every mip and layer (VRI clears mip 0, which the graph copies to the others). `readback()` reads one
+is reset in every mip and layer (VRI clears mip 0, which the graph copies to the others). A history buffer
+(`createHistoryBuffer`) holds what a texture cannot, such as per-pixel sample lists; the reset copies zeros into it
+from one upload buffer the graph keeps, since VRI has no buffer clear on WebGPU. `readback()` reads one
 mip of one layer or depth slice. `examples/basics/depth_pyramid.cpp` builds a pyramid of depth maxima this way.
 
 Current limits: depth is D32; a use names one mip or all of them, not a span of several. The per-pass profiler
