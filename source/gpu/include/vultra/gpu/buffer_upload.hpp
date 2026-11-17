@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <expected>
 #include <span>
+#include <vector>
 
 namespace vultra
 {
@@ -14,4 +15,7 @@ namespace vultra
                                                             VriBufferUsageFlags        usage,
                                                             VriAccessStage             ready,
                                                             uint32_t                   structureStride = 0);
+    // Blocking copy of a whole buffer's bytes between frames. The buffer needs TransferSrc usage and is left in
+    // the state it was in.
+    [[nodiscard]] std::expected<std::vector<std::byte>, Error> readbackBuffer(Device& device, Buffer& buffer);
 } // namespace vultra
