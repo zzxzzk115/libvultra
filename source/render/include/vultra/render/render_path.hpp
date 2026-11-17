@@ -149,6 +149,9 @@ namespace vultra
         std::vector<SceneResourceDesc> provides;
         // Values a user may change, shown and set as "<slot>.<name>"; RenderPath::setParameter changes them.
         std::vector<PassParameter> parameters;
+        // The parameters addPasses() reads, such as the size of an image: a change takes effect when the graph is
+        // built again, and RenderPath::needsBuild() tells the caller so.
+        std::vector<std::string> buildParameters;
         // The subpixel jitter the stage asks for on every view's projection: the length of the Halton (2, 3)
         // sequence it repeats; 0 for none. At most one stage of a path asks.
         uint32_t jitter = 0;
@@ -202,6 +205,8 @@ namespace vultra
             addView;
         // How many of `views` are the path's own; zero when all are.
         size_t pathViews = 0;
+        // This stage's values, in the order of its parameters.
+        std::span<const double> parameters;
 
         bool requests(std::string_view name) const;
 
@@ -349,6 +354,9 @@ namespace vultra
         [[nodiscard]] std::expected<double, Error> parameter(std::string_view slot, std::string_view name) const;
         [[nodiscard]] std::expected<void, Error>
         setParameter(std::string_view slot, std::string_view name, double value);
+        // Whether a parameter that a stage reads in addPasses() changed since the graph was built: the caller builds
+        // the graph again for the change to take effect.
+        bool needsBuild() const;
 
         // Once per frame after graph.compile() and before recording, with one camera per view.
         [[nodiscard]] std::expected<void, Error>
@@ -397,7 +405,8 @@ namespace vultra
         size_t                         m_ViewCount = 0;
         std::vector<RenderView>        m_ViewDescs; // The views of the current graph, auxiliary ones after the path's.
         std::vector<Auxiliary>         m_Auxiliary; // Indexed by view - m_ViewCount.
-        uint32_t                       m_Jitter      = 0;       // The jitter one stage asks for.
+        uint32_t                       m_Jitter      = 0; // The jitter one stage asks for.
+        bool                           m_NeedsBuild  = false;
         GpuScene*                      m_Scene       = nullptr; // Of the current graph.
         Environment*                   m_Environment = nullptr;
     };

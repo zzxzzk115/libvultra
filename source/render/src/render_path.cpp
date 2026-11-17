@@ -435,6 +435,15 @@ namespace vultra
             {
                 parameters.push_back(parameter.defaultValue);
             }
+            for (const auto& name : type.desc.buildParameters)
+            {
+                if (!std::ranges::contains(type.desc.parameters, name, &PassParameter::name))
+                {
+                    return makeError("Stage {} builds with {}, which is not one of its parameters",
+                                     type.desc.name,
+                                     name);
+                }
+            }
             path->m_Jitter = std::max(path->m_Jitter, type.desc.jitter);
             path->m_Stages.push_back({type.desc, std::move(group), std::move(*stage), std::move(parameters)});
         }
@@ -698,6 +707,7 @@ namespace vultra
                 // which of its optional outputs it writes.
                 StageBuild build {graph, scene, environment, m_ViewDescs, index, visible, requests[stage]};
                 build.pathViews  = views.size();
+                build.parameters = instance.parameters;
                 build.size       = size;
                 build.outputSize = size;
                 auto added       = instance.stage->addPasses(build);
@@ -730,8 +740,9 @@ namespace vultra
             if (instance.desc.scope == StageScope::eFrame)
             {
                 StageBuild build {graph, scene, environment, m_ViewDescs, std::nullopt, frame, requests[index]};
-                build.pathViews = views.size();
-                auto added      = instance.stage->addPasses(build);
+                build.pathViews  = views.size();
+                build.parameters = instance.parameters;
+                auto added       = instance.stage->addPasses(build);
                 if (!added)
                 {
                     return std::unexpected(added.error());
@@ -749,6 +760,7 @@ namespace vultra
                 visible.insert(visible.end(), perView[view].begin(), perView[view].end());
                 StageBuild build {graph, scene, environment, m_ViewDescs, view, visible, requests[index]};
                 build.pathViews  = views.size();
+                build.parameters = instance.parameters;
                 build.size       = sizeOf(index, view);
                 build.outputSize = views[view].size;
                 if (!instance.desc.auxiliaryViews.empty())
@@ -797,6 +809,7 @@ namespace vultra
         m_ViewCount   = views.size();
         m_Scene       = &scene;
         m_Environment = &environment;
+        m_NeedsBuild  = false;
         return perView;
     }
 
@@ -825,6 +838,7 @@ namespace vultra
             build.pathViews  = m_ViewCount;
             build.size       = m_ViewDescs[view].size;
             build.outputSize = m_ViewDescs[view].size;
+            build.parameters = display->parameters;
             auto added       = display->stage->addPasses(build);
             if (!added)
             {
@@ -889,11 +903,21 @@ namespace vultra
                 {
                     return makeError("Parameter {}.{} must be in [{}, {}]", slot, name, found->minimum, found->maximum);
                 }
-                instance.parameters[size_t(found - instance.desc.parameters.begin())] = value;
+                auto& current = instance.parameters[size_t(found - instance.desc.parameters.begin())];
+                if (current != value && std::ranges::contains(instance.desc.buildParameters, name))
+                {
+                    m_NeedsBuild = true;
+                }
+                current = value;
                 return {};
             }
         }
         return makeError("Render path {} has no parameter {}.{}", m_Desc.name, slot, name);
+    }
+
+    bool RenderPath::needsBuild() const
+    {
+        return m_NeedsBuild;
     }
 
     std::expected<void, Error>
