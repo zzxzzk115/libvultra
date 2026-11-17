@@ -511,6 +511,218 @@ namespace
                   << " UV) match analytic values; scene.hdr equals the path without layers\n";
     }
 
+    // A stage in the upscale slot: it records the sizes and cameras it is given and clears scene.output at the
+    // output size. It asks for jitter and accepts render scales from 0.5 to 1.
+    class UpscaleStage final : public vultra::RenderStage
+    {
+    public:
+        struct Seen
+        {
+            std::vector<vultra::Extent> sizes;
+            std::vector<vultra::Extent> outputSizes;
+            std::vector<glm::mat4>      projections; // One per frame prepared.
+        };
+
+        static vultra::StageDesc desc(std::string name, uint32_t jitter)
+        {
+            vultra::StageDesc result {
+                std::move(name),
+                {std::string(vultra::kUpscaleSlot)},
+                vultra::StageScope::eView,
+                {{std::string(vultra::kSceneHdr)}, {std::string(vultra::kSceneMotion)}},
+                {{std::string(vultra::kSceneOutput), VriFormat_RGBA16_SFLOAT, "color.linear.hdr"}}};
+            result.jitter       = jitter;
+            result.minimumScale = 0.5f;
+            return result;
+        }
+
+        UpscaleStage(vultra::Device& device, Seen& seen) :
+            m_Device(device),
+            m_Seen(seen)
+        {
+        }
+
+        std::expected<vultra::SceneResources, vultra::Error> addPasses(vultra::StageBuild& build) override
+        {
+            using namespace vultra;
+            m_Seen.sizes.push_back(build.size);
+            m_Seen.outputSizes.push_back(build.outputSize);
+            const auto output = build.graph.createTexture(
+                build.graphName(kSceneOutput),
+                support::clearedTexture(build.outputSize, {0, 0, 0, 0}, VriFormat_RGBA16_SFLOAT));
+            if (!output)
+            {
+                return std::unexpected(output.error());
+            }
+            auto added = build.graph.addPass(
+                build.graphName("Upscale"),
+                {{*output, Usage::eColorWrite, true}},
+                [this, target = *output](VriCommandBuffer* cmd, RenderGraph& resources) -> std::expected<void, Error>
+                {
+                    auto&      texture = resources.getTexture(target);
+                    const auto view    = texture.view();
+                    if (!view)
+                    {
+                        return std::unexpected(view.error());
+                    }
+                    VriAttachmentDesc color {};
+                    color.view    = *view;
+                    color.loadOp  = VriAttachmentLoadOp_Clear;
+                    color.storeOp = VriAttachmentStoreOp_Store;
+                    VriAttachmentsDesc attachments {};
+                    attachments.colors     = &color;
+                    attachments.colorNum   = 1;
+                    attachments.renderArea = {0, 0, texture.desc.width, texture.desc.height};
+                    attachments.layerNum   = 1;
+                    m_Device.core.CmdBeginRendering(cmd, &attachments);
+                    m_Device.core.CmdEndRendering(cmd);
+                    return {};
+                });
+            if (!added)
+            {
+                return std::unexpected(added.error());
+            }
+            return SceneResources {{std::string(kSceneOutput), *output}};
+        }
+
+        std::expected<void, vultra::Error> prepare(vultra::RenderGraph&, const vultra::StageFrame& frame) override
+        {
+            m_Seen.projections.push_back(frame.cameras[*frame.view].projection);
+            return {};
+        }
+
+    private:
+        vultra::Device& m_Device;
+        Seen&           m_Seen;
+    };
+
+    // Render size and jitter: the stages up to the upscale slot render at the render size, the upscale stage writes
+    // the output size, every view stage sees the Halton (2, 3) jitter in its projection, and scene.motion leaves it
+    // out. A render size without an upscale slot, a scale the stage does not accept and two stages that ask for
+    // jitter are refused.
+    void renderSizeAndJitter(vultra::Device& device, vultra::Environment& environment)
+    {
+        using namespace vultra;
+        SceneData scene;
+        scene.vertices   = {{{-1, -1, 0}, {0, 0, 1}, {0, 0}},
+                            {{1, -1, 0}, {0, 0, 1}, {1, 0}},
+                            {{1, 1, 0}, {0, 0, 1}, {1, 1}},
+                            {{-1, 1, 0}, {0, 0, 1}, {0, 1}}};
+        scene.indices    = {0, 1, 2, 0, 2, 3};
+        scene.primitives = {{0, 6, 0}};
+        scene.materials.emplace_back();
+        scene.radius                  = 2;
+        const auto         gpu        = must(GpuScene::create(device, scene));
+        const glm::mat4    projection = glm::perspectiveRH_ZO(glm::radians(45.0f), 1.0f, 0.1f, 10.0f);
+        const RenderCamera camera {glm::lookAtRH(glm::vec3(0, 0, 3), glm::vec3(0), glm::vec3(0, 1, 0)),
+                                   projection,
+                                   0.1f,
+                                   10};
+
+        UpscaleStage::Seen seen;
+        const auto         upscaleType = [&](std::string name, uint32_t jitter)
+        {
+            return StageType {
+                UpscaleStage::desc(std::move(name), jitter),
+                [&seen](Device& created, const AssetSource*) -> std::expected<std::unique_ptr<RenderStage>, Error>
+                {
+                    return std::make_unique<UpscaleStage>(created, seen);
+                }};
+        };
+        const std::array     stages {meshStage(),
+                                 forwardShadingStage(device.graphicsAPI()),
+                                 upscaleType("test.upscale", 8),
+                                 toneMappingStage()};
+        const RenderPathDesc upscaled {"test.upscaled",
+                                       {{"geometry", "vultra.mesh"},
+                                        {"shading", "vultra.forward_shading"},
+                                        {std::string(kUpscaleSlot), "test.upscale"},
+                                        {std::string(kDisplaySlot), "vultra.tone_mapping"}}};
+        auto                 path    = must(RenderPath::create(device, upscaled, stages));
+        auto*                shading = static_cast<ForwardShadingStage*>(path->stage("shading"));
+        shading->settings.skybox     = false;
+        RenderGraph                      graph(device);
+        const RenderView                 view {"main", {64, 64}, {32, 32}};
+        const std::array<std::string, 1> requested {std::string(kSceneMotion)};
+        const auto resources = must(path->addPasses(graph, *gpu, environment, std::span(&view, 1), requested)).front();
+        const auto hdr       = must(findSceneResource(resources, kSceneHdr));
+        const auto motion    = must(findSceneResource(resources, kSceneMotion));
+        const auto output    = must(findSceneResource(resources, kSceneOutput));
+        for (const auto resource : {hdr, motion, output})
+        {
+            must(graph.exportResource(resource));
+        }
+        must(graph.compile());
+        require(graph.getTexture(hdr).desc.width == 32 && graph.getTexture(output).desc.width == 64,
+                "scene.hdr must have the render size and scene.output the output size");
+        require(seen.sizes == std::vector<Extent> {{32, 32}} && seen.outputSizes == std::vector<Extent> {{64, 64}},
+                "The upscale stage must render at the render size and write the output size");
+        float largestMotion = 0;
+        for (uint32_t frame = 0; frame < 9; ++frame)
+        {
+            must(gpu->beginFrame());
+            must(path->prepare(graph, std::span(&camera, 1), {}));
+            const auto submitted = must(Frame::create(device));
+            must(graph.execute(must(submitted->begin())));
+            must(submitted->submitAndWait());
+            const auto moved = must(readback(device, graph.getTexture(motion)));
+            for (size_t texel = 0; texel < moved.rgba.size(); texel += 4)
+            {
+                largestMotion = std::max({largestMotion, std::abs(moved.rgba[texel]), std::abs(moved.rgba[texel + 1])});
+            }
+        }
+        // Frame n is offset by Halton point n % 8 + 1 minus a half pixel, as a translation of clip space.
+        const std::array<glm::vec2, 8> halton {glm::vec2 {0.5f, 1 / 3.0f},
+                                               {0.25f, 2 / 3.0f},
+                                               {0.75f, 1 / 9.0f},
+                                               {0.125f, 4 / 9.0f},
+                                               {0.625f, 7 / 9.0f},
+                                               {0.375f, 2 / 9.0f},
+                                               {0.875f, 5 / 9.0f},
+                                               {0.0625f, 8 / 9.0f}};
+        require(seen.projections.size() == 9, "The upscale stage was not prepared once per frame");
+        for (uint32_t frame = 0; frame < 9; ++frame)
+        {
+            const auto      jitter = halton[frame % 8] - 0.5f;
+            const glm::vec2 offset {seen.projections[frame][2][0] - projection[2][0],
+                                    seen.projections[frame][2][1] - projection[2][1]};
+            // The translation moves the clip-space x and y by the jitter times w, which is -z_view here.
+            const glm::vec2 expected {-2 * jitter.x / 32, 2 * jitter.y / 32};
+            require(glm::all(glm::epsilonEqual(offset, expected, 1e-6f)),
+                    "Frame " + std::to_string(frame) + " does not have the Halton jitter in its projection");
+        }
+        require(largestMotion < 1e-4f,
+                "scene.motion of a still scene must leave the jitter out, but reached " +
+                    std::to_string(largestMotion));
+
+        // A render size needs an upscale slot whose stage accepts the scale.
+        const RenderView quarter {"main", {64, 64}, {16, 16}};
+        RenderGraph      refused(device);
+        require(!path->addPasses(refused, *gpu, environment, std::span(&quarter, 1)),
+                "A render scale outside the upscale stage's range must be refused");
+        auto        forward = must(createForwardPath(device));
+        RenderGraph plain(device);
+        require(!forward->addPasses(plain, *gpu, environment, std::span(&view, 1)),
+                "A render size without an upscale slot must be refused");
+        // Two stages that ask for jitter.
+        auto twice = upscaled;
+        twice.slots.insert(twice.slots.begin() + 2, {"extra", "test.extra"});
+        auto extra     = UpscaleStage::desc("test.extra", 4);
+        extra.slots    = {"extra"};
+        extra.provides = {};
+        const std::array descs {meshStage().desc,
+                                forwardShadingStage(device.graphicsAPI()).desc,
+                                UpscaleStage::desc("test.upscale", 8),
+                                extra,
+                                toneMappingStage().desc};
+        const auto       issues = validateRenderPath(twice, descs);
+        require(std::ranges::contains(issues, PathIssueKind::eDuplicateJitter, &PathIssue::kind),
+                "Two stages that ask for jitter must be refused");
+        std::cout << "Render size and jitter: stages before upscale render at 32x32 for 64x64, the projection carries "
+                     "Halton (2, 3) over 8 frames, still motion stays below "
+                  << largestMotion << "\n";
+    }
+
     // The display slot runs after the caller's own passes: final from vultra.tone_mapping equals tone mapping
     // scene.hdr directly, and a stage parameter set through the path changes it.
     void displayStage(vultra::Device& device, vultra::Environment& environment)
@@ -1009,7 +1221,7 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
             using namespace vultra;
             m_Scene = &build.scene;
             m_ViewProjections.resize(build.views.size());
-            const auto size     = build.views[*build.view].size;
+            const auto size     = build.size;
             const auto vertices = findSceneResource(build.resources, kSceneVertices);
             const auto indices  = findSceneResource(build.resources, kSceneIndices);
             if (!vertices || !indices)
@@ -1715,6 +1927,7 @@ int main()
     emptyGpuScene(device, environment);
     livePrimitiveTransform(device, environment, directory);
     gbufferLayers(device, environment);
+    renderSizeAndJitter(device, environment);
     displayStage(device, environment);
     sceneLightBuffer(device, environment);
     materialReference(device, environment);

@@ -81,7 +81,8 @@ struct GBufferOutput
     output.coat     = vultraEncodeCoat(surface.coatWeight, surface.coatRoughness, surface.coatIor);
     output.specular = vultraEncodeSpecular(surface.specularColor, surface.specularIor);
 #endif
-    float2 ndc      = input.clip.xy / input.clip.w;
+    // Where the surface is without this frame's jitter, which the previous frame's projection does not have.
+    float2 ndc      = input.clip.xy / input.clip.w - cameraJitterNdc(camera);
     output.motion   = (input.previousClip.xy / input.previousClip.w - ndc) * float2(0.5, -0.5);
     return output;
 }

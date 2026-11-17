@@ -56,6 +56,6 @@ struct GBufferOutput
 #endif
     float3 farPoint = unproject(input.uv, 1, frame.inverseViewProjection);
     float4 previous = mul(camera.previousViewProjection, float4(farPoint, 1));
-    output.motion   = (previous.xy / previous.w - uvToClip(input.uv)) * float2(0.5, -0.5);
+    output.motion   = (previous.xy / previous.w - (uvToClip(input.uv) - cameraJitterNdc(camera))) * float2(0.5, -0.5);
     return output;
 }

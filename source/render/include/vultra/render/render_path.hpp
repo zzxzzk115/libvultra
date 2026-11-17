@@ -41,7 +41,10 @@ namespace vultra
     // The display stage's image, in the format the host presents.
     inline constexpr std::string_view kFinal = "final";
     // The last slot of a path: its stage turns scene.output into final after the project's graph has run.
-    inline constexpr std::string_view kDisplaySlot    = "display";
+    inline constexpr std::string_view kDisplaySlot = "display";
+    // The slot that turns the render size into the output size: the stages up to it render at a view's render size,
+    // the stages after it at its output size.
+    inline constexpr std::string_view kUpscaleSlot    = "upscale";
     inline constexpr std::string_view kSceneVertices  = "scene.vertices";  // Buffer of SceneVertex.
     inline constexpr std::string_view kSceneIndices   = "scene.indices";   // Buffer of uint32 indices.
     inline constexpr std::string_view kSceneInstances = "scene.instances"; // Buffer of PrimitiveTransform.
@@ -72,11 +75,13 @@ namespace vultra
         glm::mat4 inverseViewProjection;
         glm::mat4 previousViewProjection; // Equal to viewProjection in the first frame of a graph.
         glm::vec4 position;               // xyz world position of the camera, w 1.
-        glm::vec2 imageSize;              // In pixels.
-        glm::vec2 jitter;                 // Subpixel offset in pixels; zero until a stage asks for jitter.
+        glm::vec2 imageSize;              // The render size in pixels.
+        // The subpixel offset of this frame's projection, in pixels of the render size, x right and y down; zero
+        // unless a stage of the path asks for jitter. previousViewProjection has none, so motion leaves it out.
+        glm::vec2 jitter;
         float     nearPlane;
         float     farPlane;
-        glm::vec2 padding;
+        glm::vec2 outputSize; // In pixels; the render size unless the path has an upscale slot.
     };
 
     static_assert(sizeof(CameraData) == 496);
@@ -133,13 +138,22 @@ namespace vultra
         std::vector<SceneResourceDesc> provides;
         // Values a user may change, shown and set as "<slot>.<name>"; RenderPath::setParameter changes them.
         std::vector<PassParameter> parameters;
+        // The subpixel jitter the stage asks for on every view's projection: the length of the Halton (2, 3)
+        // sequence it repeats; 0 for none. At most one stage of a path asks.
+        uint32_t jitter = 0;
+        // A stage in the upscale slot: the render scales (render size over output size) it accepts.
+        float minimumScale = 1;
+        float maximumScale = 1;
     };
 
     // One image a path renders. With several views, view resources are named "<view>:<resource>" in the graph.
     struct RenderView
     {
         std::string name;
-        Extent      size;
+        Extent      size; // The output size: scene.output and what follows it.
+        // The size the stages up to the upscale slot render at; empty for the output size. It differs from it only
+        // in a path with an upscale slot whose stage accepts the scale.
+        Extent renderSize {};
     };
 
     struct StageBuild
@@ -157,6 +171,10 @@ namespace vultra
         std::span<const std::string> requested;
         // For the display slot: the format final must have. A display stage that cannot produce it fails.
         VriFormat displayFormat = VriFormat_Unknown;
+        // A view stage: the size it renders its view at, the render size up to the upscale slot and the output size
+        // after it, and the view's output size, which the upscale stage writes. Empty for a frame stage.
+        Extent size {};
+        Extent outputSize {};
 
         bool requests(std::string_view name) const;
 
@@ -230,7 +248,8 @@ namespace vultra
         eMissingStandard,  // The stages together do not provide scene.hdr and scene.depth.
         eDuplicateProvide, // Two stages provide the same resource.
         eFrameNeedsView,   // A frame stage needs a resource of a view stage.
-        eDisplayNotLast    // The display slot is not the last one.
+        eDisplayNotLast,   // The display slot is not the last one.
+        eDuplicateJitter   // More than one stage asks for jitter.
     };
 
     struct PathIssue
@@ -315,12 +334,14 @@ namespace vultra
             bool                         built = false; // Whether this graph has the stage's passes.
         };
 
-        // The constants of one view and the camera of its last frame.
+        // The constants of one view and the camera of its last frame, without jitter.
         struct View
         {
             std::unique_ptr<Buffer>  camera;
             Extent                   size {};
+            Extent                   renderSize {};
             std::optional<glm::mat4> previousViewProjection;
+            uint32_t                 frame = 0; // Frames prepared since the graph was built, for the jitter.
         };
 
         RenderPath(Device& device, RenderPathDesc desc);
@@ -332,7 +353,8 @@ namespace vultra
         std::vector<Instance>          m_Stages;
         std::vector<SceneResourceDesc> m_Provides;
         size_t                         m_ViewCount = 0;
-        std::vector<RenderView>        m_ViewDescs; // The views of the current graph, for the display stage.
+        std::vector<RenderView>        m_ViewDescs;       // The views of the current graph, for the display stage.
+        uint32_t                       m_Jitter      = 0; // The jitter one stage asks for.
         GpuScene*                      m_Scene       = nullptr; // Of the current graph.
         Environment*                   m_Environment = nullptr;
     };
