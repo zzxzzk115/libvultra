@@ -8,6 +8,7 @@
 #include <functional>
 #include <memory>
 #include <span>
+#include <string_view>
 #include <vector>
 
 namespace vultra
@@ -63,6 +64,14 @@ namespace vultra
         [[nodiscard]] static std::expected<ShaderProgram, Error>
         loadProgram(Device&                            device,
                     const std::filesystem::path&       file,
+                    std::vector<ShaderEntry>           entries,
+                    std::vector<std::filesystem::path> includeDirectories = {});
+        // The same for Slang source text that a program carries, such as a native pass of a package; `file` names it
+        // in diagnostics and resolves its imports.
+        [[nodiscard]] static std::expected<ShaderProgram, Error>
+        loadProgram(Device&                            device,
+                    const std::filesystem::path&       file,
+                    std::string_view                   text,
                     std::vector<ShaderEntry>           entries,
                     std::vector<std::filesystem::path> includeDirectories = {});
         ~ShaderPipeline();

@@ -189,6 +189,24 @@ namespace vultra
         return ShaderProgram::load(*resolved, options.profile);
     }
 
+    std::expected<ShaderProgram, Error>
+    ShaderPipeline::loadProgram(Device&                            device,
+                                const std::filesystem::path&       file,
+                                std::string_view                   text,
+                                std::vector<ShaderEntry>           entries,
+                                std::vector<std::filesystem::path> includeDirectories)
+    {
+#ifdef VULTRA_WITH_SHADER_COMPILER
+        ShaderCompileOptions options;
+        options.entries            = std::move(entries);
+        options.includeDirectories = std::move(includeDirectories);
+        options.profile            = shaderProfile(device.graphicsAPI());
+        return ShaderProgram::compileSource(file, text, options);
+#else
+        return makeError("This build cannot compile {}: compile Slang on the host", file.generic_string());
+#endif
+    }
+
     ShaderPipeline::~ShaderPipeline()
     {
 #ifdef VULTRA_WITH_SHADER_COMPILER
