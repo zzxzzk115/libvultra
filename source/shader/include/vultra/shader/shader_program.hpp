@@ -117,8 +117,8 @@ namespace vultra
         // Compiler reflection is normalized to VRI before it enters a cooked artifact.
         std::optional<VriDescriptorType> descriptorType;
         VriTextureViewType               viewType = VriTextureViewType_2D;
-        // A storage texture: the format its [format] attribute declares (Unknown without one), and whether the
-        // shader only writes it (WTexture2D). WebGPU bakes both into the binding.
+        // A texture: the format its [format] attribute declares (Unknown without one); a storage texture, also
+        // whether the shader only writes it (WTexture2D). WebGPU bakes both into a storage binding.
         VriFormat                          storageFormat = VriFormat_Unknown;
         bool                               writeOnly     = false;
         std::vector<ShaderParameterOffset> offsets;
@@ -192,7 +192,8 @@ namespace vultra
         uint64_t           uniformSize  = 0;
         VriTextureViewType viewType     = VriTextureViewType_2D;
         bool               pushConstant = false;
-        // Storage textures: the format the shader declares and whether it only writes them.
+        // The format a texture declares with [format], Unknown when it declares none; for a storage texture, also
+        // whether the shader only writes it.
         VriFormat storageFormat = VriFormat_Unknown;
         bool      writeOnly     = false;
     };
