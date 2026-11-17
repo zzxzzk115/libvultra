@@ -152,6 +152,12 @@ graph resources. It is an ordered list of **slots**, each filled by a **stage**:
   (description and factory). There is no global registry: the caller passes the stages it knows.
   `addPasses()` takes a list of views and returns each view's resources; with several views, view resources
   are named `<view>:<resource>` in the graph and frame resources exist once.
+- A view stage can render **auxiliary views**, such as a shadow map's light view: `StageDesc::auxiliaryViews`
+  names each one and the slots it runs, and `StageBuild::addView()` runs the stages of those slots for it at a size
+  and with a camera the stage computes each frame from the view's unjittered camera and the lights. They are views
+  of the graph after the path's own (`<view>.<name>:<resource>`, or `<name>:` with one view), with their own
+  `camera.data`, no jitter and `StageFrame::auxiliary` set; `addPasses()` returns only the path's views. Their slots
+  come before the stage, hold view stages and ask for no auxiliary views themselves.
 - `validateRenderPath()` checks a path from the descriptions alone: every required resource is provided by an
   earlier stage, no resource is provided twice, a frame stage reads no view resource, and the stages together
   provide `scene.hdr` (RGBA16F, scene-linear) and `scene.depth` (D32). Hosts call it offline; `create()` calls it
