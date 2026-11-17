@@ -1842,6 +1842,97 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
         std::cout << "Auxiliary view: rendered per view under <view>.probe, equal to its camera rendered alone\n";
     }
 
+    // Two views with mirrored asymmetric frusta, as a headset gives them: camera.data carries each view's index,
+    // the view count and the tangents of its four half angles, and positions rebuilt from scene.depth with
+    // inverseViewProjection lie where the half angles put them, not where a symmetric frustum of the same vertical
+    // field of view and aspect ratio would.
+    void asymmetricFrustum(vultra::Device& device, vultra::Environment& environment)
+    {
+        using namespace vultra;
+        const auto gpu     = must(GpuScene::create(device, quadScene()));
+        const auto forward = must(createForwardPath(device));
+        static_cast<ForwardShadingStage*>(forward->stage("shading"))->settings.ibl = false;
+        constexpr uint32_t             size                                        = 64;
+        constexpr float                distance                                    = 4;
+        const std::array<glm::vec4, 2> tangents {glm::vec4(0.40f, 0.25f, 0.30f, 0.35f),
+                                                 glm::vec4(0.25f, 0.40f, 0.30f, 0.35f)};
+        const std::array               views {RenderView {"left", {size, size}}, RenderView {"right", {size, size}}};
+        std::array<RenderCamera, 2>    cameras {};
+        for (size_t view = 0; view < cameras.size(); ++view)
+        {
+            const auto& t       = tangents[view];
+            const float closest = 0.1f;
+            cameras[view]       = {
+                glm::lookAtRH(glm::vec3(0, 0, distance), glm::vec3(0), glm::vec3(0, 1, 0)),
+                glm::frustumRH_ZO(-t.x * closest, t.y * closest, -t.w * closest, t.z * closest, closest, 10.0f),
+                closest,
+                10};
+        }
+        RenderGraph                          graph(device);
+        const auto                           resources = must(forward->addPasses(graph, *gpu, environment, views));
+        std::array<RenderGraph::Resource, 2> depths {};
+        std::array<RenderGraph::Resource, 2> constants {};
+        for (size_t view = 0; view < views.size(); ++view)
+        {
+            depths[view]    = must(findSceneResource(resources[view], kSceneDepth));
+            constants[view] = must(findSceneResource(resources[view], kCameraData));
+            must(graph.exportResource(depths[view]));
+        }
+        must(graph.compile());
+        must(forward->prepare(graph, cameras, {}));
+        const auto frame = must(Frame::create(device));
+        run(*frame, graph);
+        for (size_t view = 0; view < views.size(); ++view)
+        {
+            // camera.data is host-visible: the path writes it through a mapping, and the test reads it the same way.
+            auto&      buffer = graph.getBuffer(constants[view]);
+            const auto mapped = device.core.MapBuffer(buffer.handle, 0, sizeof(CameraData));
+            require(mapped != nullptr, "Map camera.data");
+            CameraData data {};
+            std::memcpy(&data, mapped, sizeof(data));
+            device.core.UnmapBuffer(buffer.handle);
+            require(data.viewIndex == view && data.viewCount == 2, "camera.data has the wrong view index or count");
+            require(glm::all(glm::epsilonEqual(data.tanHalfAngles, tangents[view], 1e-5f)),
+                    "camera.data has the wrong half-angle tangents");
+            const auto  depth = must(readback(device, graph.getTexture(depths[view])));
+            const auto& t     = tangents[view];
+            // A symmetric frustum with the same vertical field of view and aspect ratio.
+            const float symmetricHalf = (t.z + t.w) / 2;
+            const float symmetricSide = symmetricHalf * (t.x + t.y) / (t.z + t.w);
+            float       worst         = 0;
+            float       symmetricBest = 1e9f;
+            uint32_t    covered       = 0;
+            for (uint32_t y = 0; y < size; ++y)
+            {
+                for (uint32_t x = 0; x < size; ++x)
+                {
+                    const float z = depth.rgba[(y * size + x) * 4];
+                    if (z >= 1)
+                    {
+                        continue;
+                    }
+                    ++covered;
+                    const glm::vec2 uv((float(x) + 0.5f) / size, (float(y) + 0.5f) / size);
+                    glm::vec4       world = data.inverseViewProjection * glm::vec4(uv.x * 2 - 1, 1 - uv.y * 2, z, 1);
+                    world /= world.w;
+                    const glm::vec3 expected(distance * (-t.x + uv.x * (t.x + t.y)),
+                                             distance * (t.z - uv.y * (t.z + t.w)),
+                                             0);
+                    const glm::vec3 symmetric(distance * symmetricSide * (uv.x * 2 - 1),
+                                              distance * symmetricHalf * (1 - uv.y * 2),
+                                              0);
+                    worst         = std::max(worst, glm::length(glm::vec3(world) - expected));
+                    symmetricBest = std::min(symmetricBest, glm::length(glm::vec3(world) - symmetric));
+                }
+            }
+            require(covered > size * size / 2, "The quad does not cover the view");
+            require(worst < 1e-3f, "A position rebuilt from depth is not where the half angles put it");
+            require(symmetricBest > 0.05f, "The asymmetric frustum rendered what a symmetric one renders");
+        }
+        std::cout << "Asymmetric frusta: camera.data holds view index, count and half angles; depth rebuilds the "
+                     "analytic positions\n";
+    }
+
     // A parameter a stage reads when the graph is built: changing it, and only it, asks for a new graph, which
     // renders the probe at the new size. A build parameter the stage does not have is refused.
     void buildParameters(vultra::Device& device, vultra::Environment& environment)
@@ -2145,6 +2236,7 @@ int main()
     twoViews(device, environment, directory);
     auxiliaryView(device, environment);
     buildParameters(device, environment);
+    asymmetricFrustum(device, environment);
     materialType(device, environment, directory);
     std::cout << "Forward path tests passed: constant HDR/IBL mip chain, BRDF LUT, upstream OpenPBR C++ reference, "
                  "material textures and live transforms\n";

@@ -64,6 +64,20 @@ namespace vultra
             return result;
         }
 
+        // From a right-handed perspective projection: x_ndc = m[0][0] * x / -z - m[2][0], so the right edge lies at
+        // x / -z = (1 + m[2][0]) / m[0][0] and the left one at -(1 - m[2][0]) / m[0][0]; likewise up and down.
+        glm::vec4 tanHalfAngles(const glm::mat4& projection)
+        {
+            if (projection[2][3] != -1)
+            {
+                return glm::vec4(0);
+            }
+            return {(1 - projection[2][0]) / projection[0][0],
+                    (1 + projection[2][0]) / projection[0][0],
+                    (1 + projection[2][1]) / projection[1][1],
+                    (1 - projection[2][1]) / projection[1][1]};
+        }
+
         bool fillsDisplay(const RenderPathDesc& path, std::span<const size_t> slots)
         {
             return std::ranges::any_of(slots,
@@ -948,6 +962,7 @@ namespace vultra
             auto&      camera = jittered[index];
             glm::vec2  jitter {0};
             const auto unjittered = camera.projection * camera.view;
+            const auto tangents   = tanHalfAngles(camera.projection);
             if (m_Jitter != 0 && index < cameras.size())
             {
                 // Halton (2, 3) from its second point, which skips the corner (0, 0), centred on the pixel.
@@ -974,6 +989,9 @@ namespace vultra
             data.nearPlane              = camera.nearPlane;
             data.farPlane               = camera.farPlane;
             data.outputSize             = {float(view.size.width), float(view.size.height)};
+            data.tanHalfAngles          = tangents;
+            data.viewIndex              = index;
+            data.viewCount              = uint32_t(m_ViewCount);
             view.previousViewProjection = unjittered;
             auto* mapped                = m_Device.core.MapBuffer(view.camera->handle, 0, sizeof(data));
             if (!mapped)

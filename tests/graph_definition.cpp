@@ -281,6 +281,51 @@ namespace
         return result;
     }
 
+    // One graph holds the definition once per view: its passes and resources are named "<view>:<id>", each view
+    // reads its own imports, and the outputs keep the names the definition gives them.
+    void perView(Device& device, const PassCatalog& catalog)
+    {
+        RenderGraph                               graph(device);
+        const Extent                              size {4, 4};
+        const std::array<std::array<float, 4>, 2> clears {{{0.5f, 0.5f, 0.5f, 1}, {2, 1, 0.5f, 1}}};
+        const std::array<std::string, 2>          views {"left", "right"};
+        std::array<RenderGraph::Resource, 2>      colors {};
+        std::array<GraphBuild, 2>                 builds; // Own the passes until the graph has run.
+        for (size_t view = 0; view < views.size(); ++view)
+        {
+            const auto hdr = must(
+                graph.createTexture(views[view] + ":hdr", clearedTexture(size, clears[view], VriFormat_RGBA16_SFLOAT)));
+            must(graph.addPass(views[view] + ":Clear",
+                               {{hdr, Usage::eColorWrite}},
+                               [&, hdr, view](VriCommandBuffer* cmd, RenderGraph& current)
+                               {
+                                   return clearPass(device, cmd, current.getTexture(hdr), size, clears[view].data());
+                               }));
+            const std::array imports {GraphBinding {"scene.hdr", hdr}};
+            builds[view]      = must(chain().build(graph, catalog, imports, views[view]));
+            const auto& built = builds[view];
+            require(built.passes.size() == 2 && built.passes[0].name == views[view] + ":boost" &&
+                        built.passes[1].name == views[view] + ":final",
+                    "Passes built for a view are not named <view>:<id>");
+            require(built.outputs.size() == 1 && built.outputs[0].name == "final.color",
+                    "An output built for a view changed its name");
+            require(must(graph.resourceInfo(built.outputs[0].resource)).name.starts_with(views[view] + ":final."),
+                    "A resource built for a view is not named after the view");
+            colors[view] = built.outputs[0].resource;
+        }
+        must(graph.compile());
+        const auto frame = must(Frame::create(device));
+        run(*frame, graph);
+        for (size_t view = 0; view < views.size(); ++view)
+        {
+            // chain() multiplies by 2, then by 0.25.
+            const auto image = must(readback(device, graph.getTexture(colors[view])));
+            require(std::abs(image.rgba[0] - clears[view][0] * 0.5f) < 1e-3f,
+                    "A view's passes did not read that view's import");
+        }
+        std::cout << "Graph definition per view: <view>:<id> passes, each reading its own imports" << std::endl;
+    }
+
     void invalidGraphs(Device& device, PassCatalog& catalog)
     {
         RenderGraph      graph(device);
@@ -374,6 +419,7 @@ int main()
             "Installing a project pass also installed unrelated renderer definitions");
     must(catalog.add(toneMappingDefinition()));
     invalidGraphs(*device, catalog);
+    perView(*device, catalog);
     const auto directory =
         std::filesystem::path("build/.tmp") /
         ("graph-definition-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));

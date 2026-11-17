@@ -118,8 +118,10 @@ namespace vultra
         return parse(text);
     }
 
-    std::expected<GraphBuild, Error>
-    GraphDefinition::build(RenderGraph& graph, const PassCatalog& catalog, std::span<const GraphBinding> imports) const
+    std::expected<GraphBuild, Error> GraphDefinition::build(RenderGraph&                  graph,
+                                                            const PassCatalog&            catalog,
+                                                            std::span<const GraphBinding> imports,
+                                                            std::string_view              view) const
     {
         if (outputs.empty())
         {
@@ -318,7 +320,8 @@ namespace vultra
             {
                 inputs.push_back(resources.at(source));
             }
-            auto instance = catalog.build(graph, pass.type, pass.id, inputs, pass.parameters);
+            const auto name     = view.empty() ? pass.id : std::string(view) + ":" + pass.id;
+            auto       instance = catalog.build(graph, pass.type, name, inputs, pass.parameters);
             if (!instance)
             {
                 return std::unexpected(instance.error());

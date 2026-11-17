@@ -31,6 +31,10 @@ struct CameraData
     float    nearPlane;
     float    farPlane;
     float2   outputSize;
+    float4   tanHalfAngles; // Left, right, up and down, without jitter; zero for an orthographic projection.
+    uint     viewIndex;
+    uint     viewCount;
+    float2   padding;
 };
 
 // The jitter of the view's projection in NDC, whose y points up. Motion subtracts it from where a pixel was drawn.

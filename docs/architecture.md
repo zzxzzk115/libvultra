@@ -136,7 +136,8 @@ Current limits: depth is D32; a use names one mip or all of them, not a span of 
 works with single-batch plans.
 
 `PassCatalog` holds named pass definitions with typed ports and numeric parameters. A `.vgraph` file lists pass
-instances and connections and builds through the same executor as C++ `addPass()`.
+instances and connections and builds through the same executor as C++ `addPass()`. Built with a view name, its
+passes and the resources and history they create are named `<view>:<id>`, so one graph holds it once per view.
 
 ## Rendering
 
@@ -170,7 +171,9 @@ Every path provides two resources itself, before its first stage (`pathInputs()`
 uploads them as one storage buffer of at most 64 `GpuLight` records (`LightData` in
 `resources/scene_lights.slangh`); `StageFrame::lightBuffer` gives stages its CPU side, as `vultra.forward_shading`
 uses it. `camera.data` is a constant buffer of `CameraData` per view: matrices and their inverses, the previous
-frame's view projection, position, image size and clip planes, written by `prepare()`.
+frame's view projection, position, image size and clip planes, the view's index, the count of the path's views
+and the tangents of the four half angles of its unjittered projection, written by `prepare()`. Frusta may be
+asymmetric, as a headset's eyes are: the path and its stages use the full matrices.
 
 `vultra.forward` is the reference path, made of two stages: `vultra.mesh` (slot `geometry`, frame) imports the
 scene's vertex, index and primitive transform buffers as `scene.vertices`, `scene.indices` and
