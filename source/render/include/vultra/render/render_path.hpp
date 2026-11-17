@@ -183,6 +183,10 @@ namespace vultra
         // The size the stages up to the upscale slot render at; empty for the output size. It differs from it only
         // in a path with an upscale slot whose stage accepts the scale.
         Extent renderSize {};
+        // A derived view runs none of the path's view stages: addPasses() gives it the frame's resources and its
+        // camera.data, and the caller makes its scene.hdr, for example from other views' resources, before
+        // addDisplay(). The first view is never derived.
+        bool derived = false;
     };
 
     struct StageBuild
