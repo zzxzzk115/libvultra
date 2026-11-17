@@ -219,6 +219,9 @@ namespace vultra
         // camera.data, and the caller makes its scene.hdr, for example from other views' resources, before
         // addDisplay(). The first view is never derived.
         bool derived = false;
+        // A derived view: the slots whose view stages run for it all the same, before its scene.hdr is made, so that
+        // it has its own depth or surface ids, say. The caller checks which slots may be listed.
+        std::vector<std::string> slots;
     };
 
     struct StageBuild

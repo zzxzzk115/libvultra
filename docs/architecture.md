@@ -178,8 +178,9 @@ and the tangents of the four half angles of its unjittered projection, written b
 asymmetric, as a headset's eyes are: the path and its stages use the full matrices. `views.data` is one
 constant buffer of `ViewsData` per frame: every view's matrices, their inverses and last frame's ones, for passes
 that move pixels between views; paths of more than two views do not provide it. A `RenderView` may be
-derived: the path runs no view stage for it and gives it only the frame's resources and its `camera.data`; the
-caller makes its `scene.hdr` from other views' resources before `addDisplay()`. The first view is never derived.
+derived: the path runs no view stage for it but those of the slots it lists (`RenderView::slots`), and gives it the
+frame's resources and its `camera.data`; the caller makes its `scene.hdr` from other views' resources before
+`addDisplay()`. The first view is never derived.
 
 `vultra.forward` is the reference path, made of two stages: `vultra.mesh` (slot `geometry`, frame) imports the
 scene's vertex, index and primitive transform buffers as `scene.vertices`, `scene.indices` and

@@ -96,7 +96,8 @@ Added:
   `--headless --stereo` are in Vultra-CLI. Derived views: `RenderView::derived` (the host's derive graph makes
   their `scene.hdr`). `views.data` (`ViewsData`, two views and a count; `[VultraViews]` in the host). History
   buffers (C1): `RenderGraph::createHistoryBuffer`, zeroed by a copy from one upload buffer on every API.
-  `stereo.derive_slots` (C3) is not done.
+  `RenderView::slots`: a derived view runs the view stages of the slots it lists (C3, `stereo.derive_slots` in the
+  host).
 - Slang user-attribute and field-initializer reflection, stored in cooked programs.
 - A render graph execution plan with batches per queue, async compute through `execute(Frame&)`, and
   `writeDot()`.
