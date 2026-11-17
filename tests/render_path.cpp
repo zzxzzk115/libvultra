@@ -2024,12 +2024,32 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
                     must(readback(device, graph.getTexture(finals[1]))).rgba,
                 "The display did not run for the derived view");
 
+        // A derived view runs the stages of the slots it lists, with its own camera.
+        RenderView shaded = right;
+        shaded.slots      = {"shading"};
+        RenderGraph      listed(device);
+        const std::array withSlots {left, shaded};
+        const auto       own    = must(forward->addPasses(listed, *gpu, environment, withSlots));
+        const auto       ownHdr = must(findSceneResource(own[1], kSceneHdr));
+        must(listed.exportResource(ownHdr));
+        must(listed.compile());
+        require(std::ranges::contains(listed.activePasses(), std::string("right:Forward")),
+                "A derived view did not run the slot it lists");
+        must(forward->prepare(listed, cameras, {}));
+        run(*frame, listed);
+        require(must(readback(device, listed.getTexture(ownHdr))).rgba ==
+                    renderViews(device, *forward, *gpu, environment, std::span(&alone, 1), std::span(&cameras[1], 1))
+                        .front()
+                        .rgba,
+                "A slot a derived view lists did not render with that view's camera");
+
         RenderGraph      wrong(device);
         const std::array backwards {right, left};
         const auto       refused = forward->addPasses(wrong, *gpu, environment, backwards);
         require(!refused && refused.error().message.find("first view") != std::string::npos,
                 "A path whose first view is derived was accepted");
-        std::cout << "Derived view: no stages, own camera.data, display; the rendered view unchanged" << std::endl;
+        std::cout << "Derived view: only the slots it lists, own camera.data, display; the rendered view unchanged"
+                  << std::endl;
     }
 
     // A parameter a stage reads when the graph is built: changing it, and only it, asks for a new graph, which

@@ -80,6 +80,18 @@ namespace vultra
                     (1 - projection[2][1]) / projection[1][1]};
         }
 
+        // Whether a stage of these slots runs for the view: every one for a rendered view, those of its slots for a
+        // derived one.
+        bool runsFor(const RenderPathDesc& path, std::span<const size_t> slots, const RenderView& view)
+        {
+            return !view.derived ||
+                   std::ranges::any_of(slots,
+                                       [&](size_t index)
+                                       {
+                                           return std::ranges::contains(view.slots, path.slots[index].slot);
+                                       });
+        }
+
         bool fillsDisplay(const RenderPathDesc& path, std::span<const size_t> slots)
         {
             return std::ranges::any_of(slots,
@@ -796,7 +808,7 @@ namespace vultra
             }
             for (uint32_t view = 0; view < views.size(); ++view)
             {
-                if (views[view].derived)
+                if (!runsFor(m_Desc, instance.slots, views[view]))
                 {
                     continue;
                 }
@@ -1079,8 +1091,9 @@ namespace vultra
             }
             for (uint32_t view = 0; view < cameras.size(); ++view)
             {
-                // The display stage runs for every view; the other view stages only for rendered ones.
-                if (m_ViewDescs[view].derived && !fillsDisplay(m_Desc, instance.slots))
+                // The display stage runs for every view; the other view stages for rendered views and the slots
+                // a derived view lists.
+                if (!fillsDisplay(m_Desc, instance.slots) && !runsFor(m_Desc, instance.slots, m_ViewDescs[view]))
                 {
                     continue;
                 }
