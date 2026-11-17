@@ -164,8 +164,26 @@ namespace vultra
                         return VriFormat_RGBA8_UNORM;
                     case SLANG_IMAGE_FORMAT_rg8:
                         return VriFormat_RG8_UNORM;
+                    case SLANG_IMAGE_FORMAT_rgba16:
+                        return VriFormat_RGBA16_UNORM;
+                    case SLANG_IMAGE_FORMAT_r8ui:
+                        return VriFormat_R8_UINT;
+                    case SLANG_IMAGE_FORMAT_rg8ui:
+                        return VriFormat_RG8_UINT;
+                    case SLANG_IMAGE_FORMAT_rgba8ui:
+                        return VriFormat_RGBA8_UINT;
+                    case SLANG_IMAGE_FORMAT_r16ui:
+                        return VriFormat_R16_UINT;
+                    case SLANG_IMAGE_FORMAT_rg16ui:
+                        return VriFormat_RG16_UINT;
+                    case SLANG_IMAGE_FORMAT_rgba16ui:
+                        return VriFormat_RGBA16_UINT;
                     case SLANG_IMAGE_FORMAT_r32ui:
                         return VriFormat_R32_UINT;
+                    case SLANG_IMAGE_FORMAT_rg32ui:
+                        return VriFormat_RG32_UINT;
+                    case SLANG_IMAGE_FORMAT_rgba32ui:
+                        return VriFormat_RGBA32_UINT;
                     default:
                         return VriFormat_Unknown;
                 }
