@@ -71,6 +71,13 @@ Added:
   revised from RG32_UINT by the owner because VRI 0.2.2's WebGPU backend maps no RG32_UINT texture);
   `vultraSampleLight`. The builtin pack ships `passes/forward.slang`'s source so a host cooks it with its types.
   Templates of Vultra-CLI render byte-identically before and after on Vulkan, D3D12 and WebGPU.
+- D55 segment (2026-11-17), the kernel side of native pass types, `--output-resource` and image atomics:
+  `readbackTexels()` and `ImageReadback::consumeTexels()` return texels as stored (the unsigned formats R8 to
+  RGBA32_UINT included), `readback()` decodes RG8, RGBA16, R16F and RG32F as well and refuses integer formats,
+  `readbackBuffer()` copies a buffer back (`test-readback`); `ShaderPipeline::loadProgram(device, file, text, ...)`
+  compiles source text for the device, so a native pass of a package names no shader target;
+  `DeviceFeatures::imageAtomics32` (Vulkan and D3D12 when R32_UINT is a storage format; no VRI bit or request).
+  The native pass types themselves (`Registry::addPass`) live in Vultra-CLI and need nothing new from the kernel.
 - Slang user-attribute and field-initializer reflection, stored in cooked programs.
 - A render graph execution plan with batches per queue, async compute through `execute(Frame&)`, and
   `writeDot()`.
