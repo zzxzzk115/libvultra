@@ -365,6 +365,13 @@ namespace vultra
             m_Features.blockCompression =
                 m_Features.blockCompression && (core.GetFormatSupport(handle, format) & VriFormatSupport_Texture) != 0;
         }
+        // VRI has no feature bit for it, and there is nothing to request: Vulkan requires atomics on R32_UINT
+        // storage images and Direct3D 12 on typed R32_UINT UAVs. WGSL has no texture atomics; the Metal and OpenGL
+        // backends are not audited.
+        const auto api = graphicsAPI();
+        m_Features.imageAtomics32 =
+            (api == VriGraphicsAPI_Vulkan || api == VriGraphicsAPI_D3D12) &&
+            (core.GetFormatSupport(handle, VriFormat_R32_UINT) & VriFormatSupport_StorageTexture);
         const auto cacheResult =
             vriGetInterface(handle, VRI_INTERFACE_PIPELINE_CACHE, sizeof(m_PipelineCacheApi), &m_PipelineCacheApi);
         // WebGPU owns pipeline compilation internally and exposes no application cache interface.

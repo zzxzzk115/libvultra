@@ -15,7 +15,9 @@ Ray tracing pipelines, ray queries, mesh shading, variable-rate shading and bind
 VRI features (`VriFeatureBits`). On Vulkan a device has them only when `Device::create()` requested them and
 the driver granted them; `DeviceFeatures` then reports what was granted. Metal reports ray queries and mesh
 shading from the GPU family without a request. A program that wants such a feature has to request it when it
-creates the device: the `vultra` command line requests none today.
+creates the device: the `vultra` command line requests none today. `imageAtomics32` has no VRI feature bit and
+needs no request: Vulkan requires atomics on R32_UINT storage images and Direct3D 12 on typed R32_UINT UAVs, so
+the device reports it on those two APIs when R32_UINT is a storage format.
 
 ## Audit
 
@@ -28,6 +30,7 @@ from VRI's source only; **not exposed** means VRI has no way to request or use i
 | Independent compute queue | `asyncCompute` | A second queue of the graphics family when the family has one. | A second `MTLCommandQueue`; whether it overlaps graphics is up to the GPU. | No: one queue. | Vulkan: run here (`test-graph-async`). Metal, WebGPU: source. |
 | Ray query and acceleration structures | `rayQuery`, `rayTracingPipeline` | `VK_KHR_ray_query`, `VK_KHR_acceleration_structure`, `VK_KHR_ray_tracing_pipeline` when requested. | Ray queries when the GPU supports ray tracing; no ray tracing pipeline. | No. | Vulkan: reported here. Metal, WebGPU: source. |
 | Mesh shading | `meshShading` | `VK_EXT_mesh_shader` (task and mesh) when requested. | Metal 3 GPU family. | No. | Vulkan: run here (`test-meshlets`, `example-basics mesh-shading`). Metal, WebGPU: source. |
+| 32-bit image atomics | `imageAtomics32` | Atomics on R32_UINT storage images are required of every device; nothing to request. | Not audited; reported false. | No: WGSL has no texture atomics, and Slang refuses `InterlockedMin` on a texture for WGSL. | Vulkan, Direct3D 12: run here (VultraLab `examples/splat`). WebGPU: compile error, run here. |
 | 64-bit atomics | none | Not exposed in the released VRI: no feature bit, and the backend does not enable `shaderInt64` or 64-bit atomic features. | Not exposed. Metal Shading Language has 64-bit `ulong` atomics for min and max only, on newer GPU families; VRI does not wire them. | Not exposed; WebGPU has no 64-bit atomics. | Source; see the decision below for the local VRI branch. |
 | Sparse textures | none | Not exposed: no sparse or tiled resource API. | Not exposed. | Not exposed. | Source. |
 | Indirect draw with a count | `drawIndirectCount` | Vulkan 1.2 `drawIndirectCount`, enabled when supported. | No: the command is an empty stub and the flag is false. | No. | Vulkan: reported here, not run. Metal, WebGPU: source. |
