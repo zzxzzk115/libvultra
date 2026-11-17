@@ -26,12 +26,18 @@ struct CameraData
     float4x4 inverseViewProjection;
     float4x4 previousViewProjection;
     float4   position;
-    float2   imageSize;
-    float2   jitter;
+    float2   imageSize; // The render size.
+    float2   jitter;    // In pixels of the render size, x right and y down.
     float    nearPlane;
     float    farPlane;
-    float2   padding;
+    float2   outputSize;
 };
+
+// The jitter of the view's projection in NDC, whose y points up. Motion subtracts it from where a pixel was drawn.
+float2 cameraJitterNdc(CameraData data)
+{
+    return float2(2, -2) * data.jitter / data.imageSize;
+}
 
 // Forward shading's frame. Include after `import vultra.material;`, which declares LightData and
 // PrimitiveTransform. Only the bindings a shader of this block uses exist, so a stage stays within WebGPU's

@@ -78,6 +78,12 @@ Added:
   compiles source text for the device, so a native pass of a package names no shader target;
   `DeviceFeatures::imageAtomics32` (Vulkan and D3D12 when R32_UINT is a storage format; no VRI bit or request).
   The native pass types themselves (`Registry::addPass`) live in Vultra-CLI and need nothing new from the kernel.
+- M8 part d1 (2026-11-17): render size and output size per view (`RenderView::renderSize`, `StageBuild::size` and
+  `outputSize`, the `upscale` slot), subpixel jitter (`StageDesc::jitter`, Halton (2, 3), the path jitters the
+  cameras it gives the stages; `CameraData::jitter` in pixels and `outputSize` in the former padding;
+  `previousViewProjection` without jitter, so forward's and the sky's motion subtract it), `StageDesc::minimumScale`
+  and `maximumScale`, `PathIssueKind::eDuplicateJitter`. The standard upscale stage, `vultra.temporal`, is a pass
+  shader in Vultra-Packages.
 - Slang user-attribute and field-initializer reflection, stored in cooked programs.
 - A render graph execution plan with batches per queue, async compute through `execute(Frame&)`, and
   `writeDot()`.

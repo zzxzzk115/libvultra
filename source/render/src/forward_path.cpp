@@ -577,7 +577,7 @@ namespace vultra
                 }
             }
         }
-        const auto size = build.views[*build.view].size;
+        const auto size = build.size;
         const auto all  = forwardTargets(m_Device.core.GetDeviceDesc(m_Device.handle)->graphicsAPI);
         const auto used = std::span(all).first(m_GBuffer ? all.size() : 1);
         std::vector<RenderGraph::Resource> targets;

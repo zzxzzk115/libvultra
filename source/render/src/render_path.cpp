@@ -51,6 +51,19 @@ namespace vultra
             PathInput {{std::string(kCameraData), VriFormat_Unknown, "camera", true, sizeof(CameraData)},
                        StageScope::eView}};
 
+        // The radical inverse of `index` in `base`: the Halton sequence's point in that dimension.
+        float halton(uint32_t index, uint32_t base)
+        {
+            float result   = 0;
+            float fraction = 1;
+            for (; index > 0; index /= base)
+            {
+                fraction /= float(base);
+                result += fraction * float(index % base);
+            }
+            return result;
+        }
+
         bool fillsDisplay(const RenderPathDesc& path, std::span<const size_t> slots)
         {
             return std::ranges::any_of(slots,
@@ -301,6 +314,24 @@ namespace vultra
                 }
             }
         }
+        // One sequence offsets every view stage's projection, so one stage chooses it.
+        std::optional<size_t> jittered;
+        for (const auto& group : groups)
+        {
+            const auto* desc = findStage(stages, path.slots[group.front()].stage);
+            if (!desc || desc->jitter == 0)
+            {
+                continue;
+            }
+            if (jittered)
+            {
+                issues.push_back({PathIssueKind::eDuplicateJitter,
+                                  group.front(),
+                                  "stage '" + desc->name + "' asks for jitter, which " +
+                                      describe(path, *jittered) + " asks for already"});
+            }
+            jittered = group.front();
+        }
         for (const auto required : {kSceneHdr, kSceneDepth})
         {
             if (!provided.contains(required))
@@ -362,6 +393,7 @@ namespace vultra
             {
                 parameters.push_back(parameter.defaultValue);
             }
+            path->m_Jitter = std::max(path->m_Jitter, type.desc.jitter);
             path->m_Stages.push_back({type.desc, std::move(group), std::move(*stage), std::move(parameters)});
         }
         for (const auto& input : kPathInputs)
@@ -431,6 +463,52 @@ namespace vultra
             }
         }
         m_ViewCount = 0;
+        // The stages up to and including the upscale slot render at each view's render size.
+        const auto upscale =
+            std::ranges::find_if(m_Stages,
+                                 [this](const Instance& instance)
+                                 {
+                                     return std::ranges::any_of(instance.slots,
+                                                                [this](size_t slot)
+                                                                {
+                                                                    return m_Desc.slots[slot].slot == kUpscaleSlot;
+                                                                });
+                                 });
+        std::vector<Extent> renderSizes;
+        for (const auto& view : views)
+        {
+            const auto renderSize = view.renderSize.empty() ? view.size : view.renderSize;
+            if (renderSize != view.size)
+            {
+                if (upscale == m_Stages.end())
+                {
+                    return makeError("Render path {} renders view {} at {}x{} for {}x{}, but has no {} slot",
+                                     m_Desc.name,
+                                     view.name,
+                                     renderSize.width,
+                                     renderSize.height,
+                                     view.size.width,
+                                     view.size.height,
+                                     kUpscaleSlot);
+                }
+                const float scale = float(renderSize.width) / float(view.size.width);
+                if (scale < upscale->desc.minimumScale || scale > upscale->desc.maximumScale)
+                {
+                    return makeError("Render path {}: stage {} upscales from {} to {} of the output size, not {}",
+                                     m_Desc.name,
+                                     upscale->desc.name,
+                                     upscale->desc.minimumScale,
+                                     upscale->desc.maximumScale,
+                                     scale);
+                }
+            }
+            renderSizes.push_back(renderSize);
+        }
+        const auto sizeOf = [&](size_t stage, uint32_t view)
+        {
+            const bool rendering = upscale != m_Stages.end() && stage <= size_t(upscale - m_Stages.begin());
+            return rendering ? renderSizes[view] : views[view].size;
+        };
         // What each stage must return: the standard outputs, what the caller reads and what later stages need.
         std::vector<std::vector<std::string>> requests(m_Stages.size());
         std::vector<std::string>              later(requested.begin(), requested.end());
@@ -481,7 +559,9 @@ namespace vultra
                 m_Views.push_back({std::make_unique<Buffer>(std::move(*camera))});
             }
             // A new graph starts without motion: its first frame has no previous camera.
-            m_Views[view].size = views[view].size;
+            m_Views[view].size       = views[view].size;
+            m_Views[view].renderSize = renderSizes[view];
+            m_Views[view].frame      = 0;
             m_Views[view].previousViewProjection.reset();
             const StageBuild naming {graph, scene, environment, views, view, {}};
             const auto       camera = graph.importResource(naming.graphName(kCameraData), *m_Views[view].camera);
@@ -520,7 +600,9 @@ namespace vultra
                 SceneResources visible = frame;
                 visible.insert(visible.end(), perView[view].begin(), perView[view].end());
                 StageBuild build {graph, scene, environment, views, view, visible, requests[index]};
-                auto       added = instance.stage->addPasses(build);
+                build.size       = sizeOf(index, view);
+                build.outputSize = views[view].size;
+                auto added       = instance.stage->addPasses(build);
                 if (!added)
                 {
                     return std::unexpected(added.error());
@@ -575,7 +657,9 @@ namespace vultra
         {
             const SceneResources shown {{std::string(kSceneOutput), outputs[view]}};
             StageBuild           build {graph, *m_Scene, *m_Environment, m_ViewDescs, view, shown, requested, format};
-            auto                 added = display->stage->addPasses(build);
+            build.size       = m_ViewDescs[view].size;
+            build.outputSize = m_ViewDescs[view].size;
+            auto added       = display->stage->addPasses(build);
             if (!added)
             {
                 return std::unexpected(added.error());
@@ -661,23 +745,41 @@ namespace vultra
         {
             return written;
         }
+        // The stages see the cameras with this frame's jitter in their projection.
+        std::vector<RenderCamera> jittered(cameras.begin(), cameras.end());
         for (uint32_t index = 0; index < cameras.size(); ++index)
         {
-            auto&       view   = m_Views[index];
-            const auto& camera = cameras[index];
-            CameraData  data {};
+            auto&      view   = m_Views[index];
+            auto&      camera = jittered[index];
+            glm::vec2  jitter {0};
+            const auto unjittered = camera.projection * camera.view;
+            if (m_Jitter != 0)
+            {
+                // Halton (2, 3) from its second point, which skips the corner (0, 0), centred on the pixel.
+                const uint32_t point = view.frame % m_Jitter + 1;
+                jitter               = glm::vec2(halton(point, 2), halton(point, 3)) - 0.5f;
+                // A translation of clip space by the jitter in NDC, whose y points up.
+                glm::mat4 offset(1);
+                offset[3][0]      = 2 * jitter.x / float(view.renderSize.width);
+                offset[3][1]      = -2 * jitter.y / float(view.renderSize.height);
+                camera.projection = offset * camera.projection;
+            }
+            ++view.frame;
+            CameraData data {};
             data.view                   = camera.view;
             data.projection             = camera.projection;
             data.viewProjection         = camera.projection * camera.view;
             data.inverseView            = glm::inverse(camera.view);
             data.inverseProjection      = glm::inverse(camera.projection);
             data.inverseViewProjection  = glm::inverse(data.viewProjection);
-            data.previousViewProjection = view.previousViewProjection.value_or(data.viewProjection);
+            data.previousViewProjection = view.previousViewProjection.value_or(unjittered);
             data.position               = data.inverseView[3];
-            data.imageSize              = {float(view.size.width), float(view.size.height)};
+            data.imageSize              = {float(view.renderSize.width), float(view.renderSize.height)};
+            data.jitter                 = jitter;
             data.nearPlane              = camera.nearPlane;
             data.farPlane               = camera.farPlane;
-            view.previousViewProjection = data.viewProjection;
+            data.outputSize             = {float(view.size.width), float(view.size.height)};
+            view.previousViewProjection = unjittered;
             auto* mapped                = m_Device.core.MapBuffer(view.camera->handle, 0, sizeof(data));
             if (!mapped)
             {
@@ -696,7 +798,8 @@ namespace vultra
             if (instance.desc.scope == StageScope::eFrame)
             {
                 if (auto prepared =
-                        instance.stage->prepare(graph, {cameras, std::nullopt, lights, *m_Lights, instance.parameters});
+                        instance.stage->prepare(graph,
+                                                {jittered, std::nullopt, lights, *m_Lights, instance.parameters});
                     !prepared)
                 {
                     return prepared;
@@ -706,7 +809,7 @@ namespace vultra
             for (uint32_t view = 0; view < cameras.size(); ++view)
             {
                 if (auto prepared =
-                        instance.stage->prepare(graph, {cameras, view, lights, *m_Lights, instance.parameters});
+                        instance.stage->prepare(graph, {jittered, view, lights, *m_Lights, instance.parameters});
                     !prepared)
                 {
                     return prepared;
