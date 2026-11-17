@@ -23,6 +23,10 @@ namespace vultra
                 {
                     return makeError("Buffer ports cannot declare a texture format or extent");
                 }
+                if (port.kind == PassResourceKind::eTexture && port.elementSize != 0)
+                {
+                    return makeError("Texture ports have no element size");
+                }
                 if (port.sameExtentAsInput && *port.sameExtentAsInput >= inputCount)
                 {
                     return makeError("Pass extent constraint refers to a missing input");
@@ -50,6 +54,15 @@ namespace vultra
             if (info->isTexture && port.format != VriFormat_Unknown && info->textureDesc.format != port.format)
             {
                 return makeError("{}: texture format mismatch", label);
+            }
+            // A raw buffer, without a structure stride, has no element size to compare.
+            if (!info->isTexture && port.elementSize != 0 && info->bufferDesc.structureStride != 0 &&
+                info->bufferDesc.structureStride != port.elementSize)
+            {
+                return makeError("{}: elements of {} bytes, but the buffer's are {}",
+                                 label,
+                                 port.elementSize,
+                                 info->bufferDesc.structureStride);
             }
             if (port.sameExtentAsInput)
             {

@@ -27,6 +27,15 @@ namespace vultra
         PassResourceKind        kind   = PassResourceKind::eTexture;
         VriFormat               format = VriFormat_Unknown;
         std::optional<uint32_t> sameExtentAsInput;
+        // What the content means, such as "color.linear.hdr"; empty accepts or gives anything. Tools that connect
+        // passes compare it.
+        std::string semantic;
+        // An input: the scene resource read when a graph leaves it unconnected, and needed when the pass fills a slot
+        // of a render path. An output: the scene resource it provides in a slot. Empty for neither.
+        std::string resource;
+        // A buffer port: the bytes of one element, which the structure stride of a connected buffer must equal when
+        // it has one. Zero for a texture.
+        uint32_t elementSize = 0;
     };
 
     enum class PassControl
