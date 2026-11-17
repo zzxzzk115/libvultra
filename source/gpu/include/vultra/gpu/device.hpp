@@ -39,6 +39,7 @@ namespace vultra
         bool     bindless            = false; // Descriptor arrays indexed in shaders.
         bool     waveOperations      = false; // Subgroup (wave) intrinsics.
         bool     blockCompression    = false; // BC1 to BC7 textures can be sampled.
+        bool     imageAtomics32      = false; // 32-bit atomics, such as InterlockedMin, on R32 storage images.
     };
 
     // The name of a graphics API in configuration and messages: vulkan, d3d12, metal, webgpu or opengl (OpenGL and
