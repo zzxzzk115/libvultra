@@ -85,9 +85,16 @@ namespace vultra
         float     nearPlane;
         float     farPlane;
         glm::vec2 outputSize; // In pixels; the render size unless the path has an upscale slot.
+        // The tangents of the left, right, up and down half angles of the projection without jitter, each positive
+        // when that edge lies on its own side of the view axis; zero for an orthographic projection. The frustum may
+        // be asymmetric: derive nothing from a vertical field of view.
+        glm::vec4 tanHalfAngles;
+        uint32_t  viewIndex; // Of this view among the graph's views: the path's own first, then auxiliary ones.
+        uint32_t  viewCount; // The path's own views.
+        glm::vec2 padding;   // Keeps the size a multiple of 16 bytes, as constant buffers lay it out.
     };
 
-    static_assert(sizeof(CameraData) == 496);
+    static_assert(sizeof(CameraData) == 528);
 
     struct SceneResourceDesc
     {

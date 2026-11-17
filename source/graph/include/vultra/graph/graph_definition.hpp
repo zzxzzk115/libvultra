@@ -45,8 +45,12 @@ namespace vultra
         [[nodiscard]] std::expected<void, Error>                   save(const std::filesystem::path& file) const;
         [[nodiscard]] static std::expected<GraphDefinition, Error> load(const std::filesystem::path& file);
 
-        // Build into a fresh candidate graph. Discard the candidate if validation/build fails.
-        [[nodiscard]] std::expected<GraphBuild, Error>
-        build(RenderGraph& graph, const PassCatalog& catalog, std::span<const GraphBinding> imports) const;
+        // Build into a fresh candidate graph. Discard the candidate if validation/build fails. With a `view` name,
+        // the pass instances are named "<view>:<id>", and so are the resources and history they create; one graph
+        // can hold the definition once per view, each with its own history. Imports and outputs keep their names.
+        [[nodiscard]] std::expected<GraphBuild, Error> build(RenderGraph&                  graph,
+                                                             const PassCatalog&            catalog,
+                                                             std::span<const GraphBinding> imports,
+                                                             std::string_view              view = {}) const;
     };
 } // namespace vultra
