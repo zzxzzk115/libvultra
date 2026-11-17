@@ -87,8 +87,8 @@ and reports diagnostics. Two compile options are chosen per compile, not by the 
 cache key: `debugInfo` embeds source text and line information for GPU debuggers, and `optimize` runs the
 SPIRV-Tools performance passes over the generated SPIR-V. An optimized shader may compute floating-point results
 that differ by about one ulp from the unoptimized one, because the driver may contract multiplies and adds
-differently in the two; code that needs bit-exact results across both compiles without `optimize` or marks the
-arithmetic `precise`. The static Slang build carries no optimizer of its
+differently in the two; code that needs bit-exact results across both compiles without `optimize` (Slang does not
+carry `precise` into SPIR-V today, so marking arithmetic `precise` does not help). The static Slang build carries no optimizer of its
 own, so the compiler links SPIRV-Tools directly. The builtin shader pack is cooked with neither: optimizing it gave no measurable frame-time gain ([roadmap](roadmap.md)).
 `ShaderCompileOptions::entries` may name an entry point that a module in `linkSources` or `linkModules` defines
 instead of the file; hosts use this to add a vertex shader of their own to a file that has only fragment stages.
