@@ -261,7 +261,8 @@ namespace vultra
                 if (result.kind == ShaderParameterKind::eResource)
                 {
                     reflectResource(type, result);
-                    if (variable && result.descriptorType == VriDescriptorType_StorageTexture)
+                    if (variable && (result.descriptorType == VriDescriptorType_StorageTexture ||
+                                     result.descriptorType == VriDescriptorType_Texture))
                     {
                         result.storageFormat = storageFormat(variable->getImageFormat());
                     }
