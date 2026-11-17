@@ -1,6 +1,7 @@
 #include <vultra/gpu/image_readback.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -34,24 +35,133 @@ namespace vultra
 
     namespace
     {
-        std::expected<uint32_t, Error> texelSize(VriFormat format)
+        enum class Component
+        {
+            eUnorm8,
+            eUnorm16,
+            eHalf,
+            eFloat,
+            // Unsigned integers, read only as stored.
+            eUint8,
+            eUint16,
+            eUint32
+        };
+
+        struct TexelLayout
+        {
+            uint32_t  channels;
+            Component component;
+            bool      bgra  = false;
+            bool      depth = false;
+        };
+
+        std::expected<TexelLayout, Error> texelLayout(VriFormat format)
         {
             switch (format)
             {
                 case VriFormat_RGBA8_UNORM:
                 case VriFormat_RGBA8_SRGB:
+                    return TexelLayout {4, Component::eUnorm8};
                 case VriFormat_BGRA8_UNORM:
                 case VriFormat_BGRA8_SRGB:
-                case VriFormat_D32_SFLOAT:
-                case VriFormat_R32_SFLOAT:
+                    return TexelLayout {4, Component::eUnorm8, true};
+                case VriFormat_RG8_UNORM:
+                    return TexelLayout {2, Component::eUnorm8};
+                case VriFormat_RGBA16_UNORM:
+                    return TexelLayout {4, Component::eUnorm16};
+                case VriFormat_R16_SFLOAT:
+                    return TexelLayout {1, Component::eHalf};
                 case VriFormat_RG16_SFLOAT:
-                    return 4;
+                    return TexelLayout {2, Component::eHalf};
                 case VriFormat_RGBA16_SFLOAT:
-                    return 8;
+                    return TexelLayout {4, Component::eHalf};
+                case VriFormat_R32_SFLOAT:
+                    return TexelLayout {1, Component::eFloat};
+                case VriFormat_RG32_SFLOAT:
+                    return TexelLayout {2, Component::eFloat};
                 case VriFormat_RGBA32_SFLOAT:
-                    return 16;
+                    return TexelLayout {4, Component::eFloat};
+                case VriFormat_D32_SFLOAT:
+                    return TexelLayout {1, Component::eFloat, false, true};
+                case VriFormat_R8_UINT:
+                    return TexelLayout {1, Component::eUint8};
+                case VriFormat_RG8_UINT:
+                    return TexelLayout {2, Component::eUint8};
+                case VriFormat_RGBA8_UINT:
+                    return TexelLayout {4, Component::eUint8};
+                case VriFormat_R16_UINT:
+                    return TexelLayout {1, Component::eUint16};
+                case VriFormat_RG16_UINT:
+                    return TexelLayout {2, Component::eUint16};
+                case VriFormat_RGBA16_UINT:
+                    return TexelLayout {4, Component::eUint16};
+                case VriFormat_R32_UINT:
+                    return TexelLayout {1, Component::eUint32};
+                case VriFormat_RG32_UINT:
+                    return TexelLayout {2, Component::eUint32};
+                case VriFormat_RGBA32_UINT:
+                    return TexelLayout {4, Component::eUint32};
                 default:
                     return makeError("Unsupported capture format");
+            }
+        }
+
+        bool integer(Component component)
+        {
+            return component == Component::eUint8 || component == Component::eUint16 || component == Component::eUint32;
+        }
+
+        uint32_t componentBytes(Component component)
+        {
+            switch (component)
+            {
+                case Component::eUnorm8:
+                case Component::eUint8:
+                    return 1;
+                case Component::eUnorm16:
+                case Component::eHalf:
+                case Component::eUint16:
+                    return 2;
+                case Component::eFloat:
+                case Component::eUint32:
+                    return 4;
+            }
+            return 0;
+        }
+
+        std::expected<uint32_t, Error> texelSize(VriFormat format)
+        {
+            const auto layout = texelLayout(format);
+            if (!layout)
+            {
+                return std::unexpected(layout.error());
+            }
+            return layout->channels * componentBytes(layout->component);
+        }
+
+        float component(const unsigned char* data, Component kind)
+        {
+            switch (kind)
+            {
+                case Component::eUnorm8:
+                    return float(data[0]) / 255;
+                case Component::eUnorm16: {
+                    uint16_t value;
+                    std::memcpy(&value, data, 2);
+                    return float(value) / 65535;
+                }
+                case Component::eHalf: {
+                    uint16_t value;
+                    std::memcpy(&value, data, 2);
+                    return half(value);
+                }
+                case Component::eFloat: {
+                    float value;
+                    std::memcpy(&value, data, 4);
+                    return value;
+                }
+                default:
+                    return 0;
             }
         }
     } // namespace
@@ -173,90 +283,102 @@ namespace vultra
 
     std::expected<Image, Error> ImageReadback::consume()
     {
+        // record() accepted the format, so its layout is known.
+        const auto layout = *texelLayout(m_Format);
+        if (integer(layout.component))
+        {
+            return makeError("Integer texels have no float decoding; read them with consumeTexels()");
+        }
+        auto texels = consumeTexels();
+        if (!texels)
+        {
+            return std::unexpected(texels.error());
+        }
+        const auto bytes = componentBytes(layout.component);
+        Image      image {texels->size, std::vector<float>(size_t(texels->size.width) * texels->size.height * 4)};
+        for (size_t texel = 0; texel < image.rgba.size() / 4; ++texel)
+        {
+            const auto* source =
+                reinterpret_cast<const unsigned char*>(texels->texels.data()) + texel * texels->texelBytes;
+            std::array<float, 4> value {0, 0, 0, 1};
+            for (uint32_t channel = 0; channel < layout.channels; ++channel)
+            {
+                value[channel] = component(source + channel * bytes, layout.component);
+            }
+            if (layout.bgra)
+            {
+                std::swap(value[0], value[2]);
+            }
+            if (layout.depth)
+            {
+                value[1] = value[0];
+                value[2] = value[0];
+            }
+            std::ranges::copy(value, image.rgba.begin() + std::ptrdiff_t(texel * 4));
+        }
+        return image;
+    }
+
+    std::expected<TexelImage, Error> ImageReadback::consumeTexels()
+    {
         if (!m_Recorded)
         {
             return makeError("Readback has not been recorded");
         }
-        const auto size     = m_Size;
-        const auto bytes    = m_Staging.desc.size;
-        const bool depth    = m_Format == VriFormat_D32_SFLOAT;
-        const bool red      = m_Format == VriFormat_R32_SFLOAT;
-        const bool redGreen = m_Format == VriFormat_RG16_SFLOAT;
-        const bool bgra     = m_Format == VriFormat_BGRA8_UNORM || m_Format == VriFormat_BGRA8_SRGB;
-        auto&      device   = m_Device;
-        Image      image {size, std::vector<float>(size_t(size.width) * size.height * 4)};
-        auto*      data = static_cast<const unsigned char*>(device.core.MapBuffer(m_Staging.handle, 0, bytes));
+        const auto size   = m_Size;
+        auto&      device = m_Device;
+        auto* data = static_cast<const std::byte*>(device.core.MapBuffer(m_Staging.handle, 0, m_Staging.desc.size));
         if (!data)
         {
             return makeError("Map capture buffer failed");
         }
+        TexelImage result {size, m_Format, m_TexelBytes, {}};
+        const auto tight = size_t(size.width) * m_TexelBytes;
+        result.texels.resize(tight * size.height);
         for (uint32_t row = 0; row < size.height; ++row)
         {
-            const auto* sourceRow   = data + size_t(row * m_RowBytes);
-            auto*       destination = image.rgba.data() + size_t(row) * size.width * 4;
-            if (m_TexelBytes == 16)
-            {
-                std::memcpy(destination, sourceRow, size_t(size.width) * m_TexelBytes);
-                continue;
-            }
-            for (size_t i = 0; i < size_t(size.width) * 4; ++i)
-            {
-                if (depth)
-                {
-                    float value;
-                    std::memcpy(&value, sourceRow + (i / 4) * 4, 4);
-                    destination[i] = i % 4 == 3 ? 1 : value;
-                }
-                else if (red)
-                {
-                    float value;
-                    std::memcpy(&value, sourceRow + (i / 4) * 4, 4);
-                    // Red holds the value, alpha is 1 and green and blue stay 0.
-                    if (i % 4 == 0)
-                    {
-                        destination[i] = value;
-                    }
-                    else if (i % 4 == 3)
-                    {
-                        destination[i] = 1;
-                    }
-                }
-                else if (redGreen)
-                {
-                    // Red and green hold the values, alpha is 1 and blue stays 0.
-                    const size_t channel = i % 4;
-                    if (channel < 2)
-                    {
-                        uint16_t value;
-                        std::memcpy(&value, sourceRow + (i / 4) * 4 + channel * 2, 2);
-                        destination[i] = half(value);
-                    }
-                    else if (channel == 3)
-                    {
-                        destination[i] = 1;
-                    }
-                }
-                else if (m_TexelBytes == 4)
-                {
-                    const size_t channel = i % 4;
-                    const size_t source  = bgra && (channel == 0 || channel == 2) ? i - channel + (2 - channel) : i;
-                    destination[i]       = float(sourceRow[source]) / 255;
-                }
-                else if (m_TexelBytes == 8)
-                {
-                    uint16_t value;
-                    std::memcpy(&value, sourceRow + i * 2, 2);
-                    destination[i] = half(value);
-                }
-                else
-                {
-                    std::memcpy(&destination[i], sourceRow + i * 4, 4);
-                }
-            }
+            std::memcpy(result.texels.data() + row * tight, data + size_t(row * m_RowBytes), tight);
         }
         device.core.UnmapBuffer(m_Staging.handle);
         m_Recorded = false;
-        return image;
+        return result;
+    }
+
+    namespace
+    {
+        // Records `capture` into a frame of its own and waits for it.
+        std::expected<void, Error> recordAndWait(Device& device, ImageReadback& capture, Texture& texture)
+        {
+            const auto frame = Frame::create(device);
+            if (!frame)
+            {
+                return std::unexpected(frame.error());
+            }
+            const auto cmd = (*frame)->begin();
+            if (!cmd)
+            {
+                return std::unexpected(cmd.error());
+            }
+            if (auto recorded = capture.record(*cmd, texture); !recorded)
+            {
+                return std::unexpected(recorded.error());
+            }
+            return (*frame)->submitAndWait();
+        }
+    } // namespace
+
+    std::expected<TexelImage, Error> readbackTexels(Device& device, Texture& texture, uint32_t mip, uint32_t layer)
+    {
+        auto capture = ImageReadback::create(device, texture, mip, layer);
+        if (!capture)
+        {
+            return std::unexpected(capture.error());
+        }
+        if (auto done = recordAndWait(device, *capture, texture); !done)
+        {
+            return std::unexpected(done.error());
+        }
+        return capture->consumeTexels();
     }
 
     std::expected<Image, Error> readback(Device& device, Texture& texture, uint32_t mip, uint32_t layer)
@@ -266,23 +388,9 @@ namespace vultra
         {
             return std::unexpected(capture.error());
         }
-        const auto frame = Frame::create(device);
-        if (!frame)
+        if (auto done = recordAndWait(device, *capture, texture); !done)
         {
-            return std::unexpected(frame.error());
-        }
-        const auto cmd = (*frame)->begin();
-        if (!cmd)
-        {
-            return std::unexpected(cmd.error());
-        }
-        if (auto recorded = capture->record(*cmd, texture); !recorded)
-        {
-            return std::unexpected(recorded.error());
-        }
-        if (auto submitted = (*frame)->submitAndWait(); !submitted)
-        {
-            return std::unexpected(submitted.error());
+            return std::unexpected(done.error());
         }
         return capture->consume();
     }
