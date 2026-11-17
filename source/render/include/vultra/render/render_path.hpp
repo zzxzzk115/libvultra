@@ -59,6 +59,9 @@ namespace vultra
     inline constexpr std::string_view kSceneSurfaceId = "scene.surface_id";
     // A constant buffer of CameraData for one view.
     inline constexpr std::string_view kCameraData = "camera.data";
+    // A constant buffer of ViewsData: every view of the path, for passes that move pixels from one view to another.
+    // A frame resource of paths with at most kViewsDataViews views.
+    inline constexpr std::string_view kViewsData = "views.data";
     // The image-based light of the scene's environment (Environment), equirectangular RGBA16_SFLOAT textures every
     // path imports once per frame: the radiance itself, its cosine-convolved irradiance, its specular prefilter
     // with one mip per roughness step, and the split-sum BRDF table (128 x 128, red scale, green bias).
@@ -95,6 +98,35 @@ namespace vultra
     };
 
     static_assert(sizeof(CameraData) == 528);
+
+    // One view in ViewsData. The current matrices are those of camera.data, jitter included; the previous ones are
+    // last frame's without jitter, equal to the current ones without jitter in the first frame of a graph.
+    struct ViewData
+    {
+        glm::mat4 view;
+        glm::mat4 projection;
+        glm::mat4 viewProjection;
+        glm::mat4 inverseView;
+        glm::mat4 inverseProjection;
+        glm::mat4 inverseViewProjection;
+        glm::mat4 previousView;
+        glm::mat4 previousProjection;
+        glm::mat4 previousViewProjection;
+        glm::vec4 position;      // xyz world position of the camera, w 1.
+        glm::vec4 tanHalfAngles; // As in CameraData.
+    };
+
+    inline constexpr uint32_t kViewsDataViews = 2;
+
+    // The path's own views as passes read them; keep in sync with VultraViewsData in the host's vultra.slang.
+    struct ViewsData
+    {
+        std::array<ViewData, kViewsDataViews> views; // views[viewCount] onwards are zero.
+        uint32_t                              viewCount;
+        std::array<uint32_t, 3>               padding; // Keeps the size a multiple of 16 bytes.
+    };
+
+    static_assert(sizeof(ViewsData) == 1232);
 
     struct SceneResourceDesc
     {
@@ -401,7 +433,8 @@ namespace vultra
             std::unique_ptr<Buffer>  camera;
             Extent                   size {};
             Extent                   renderSize {};
-            std::optional<glm::mat4> previousViewProjection;
+            std::optional<glm::mat4> previousView; // Last frame's, without jitter.
+            std::optional<glm::mat4> previousProjection;
             uint32_t                 frame = 0; // Frames prepared since the graph was built, for the jitter.
         };
 
@@ -410,7 +443,8 @@ namespace vultra
         Device&                        m_Device;
         RenderPathDesc                 m_Desc;
         std::unique_ptr<LightBuffer>   m_Lights;
-        std::vector<View>              m_Views; // Kept across graphs; a graph uses the first m_ViewCount.
+        std::unique_ptr<Buffer>        m_ViewsData; // views.data.
+        std::vector<View>              m_Views;     // Kept across graphs; a graph uses the first m_ViewCount.
         std::vector<Instance>          m_Stages;
         std::vector<SceneResourceDesc> m_Provides;
         size_t                         m_ViewCount = 0;

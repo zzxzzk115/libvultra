@@ -94,7 +94,8 @@ Added:
 - M13 first half, stereo rig, kernel side (2026-11-17): `CameraData` gains `tanHalfAngles`, `viewIndex` and
   `viewCount` (528 bytes); `GraphDefinition::build` takes a view name. The host's two-eye session, `.vheadset` and
   `--headless --stereo` are in Vultra-CLI. Derived views: `RenderView::derived` (the host's derive graph makes
-  their `scene.hdr`). `VultraViewsData`, history buffers (C1) and `stereo.derive_slots` (C3) are not done.
+  their `scene.hdr`). `views.data` (`ViewsData`, two views and a count; `[VultraViews]` in the host). History
+  buffers (C1) and `stereo.derive_slots` (C3) are not done.
 - Slang user-attribute and field-initializer reflection, stored in cooked programs.
 - A render graph execution plan with batches per queue, async compute through `execute(Frame&)`, and
   `writeDot()`.

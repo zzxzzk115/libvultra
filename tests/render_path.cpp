@@ -1929,7 +1929,44 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
             require(worst < 1e-3f, "A position rebuilt from depth is not where the half angles put it");
             require(symmetricBest > 0.05f, "The asymmetric frustum rendered what a symmetric one renders");
         }
-        std::cout << "Asymmetric frusta: camera.data holds view index, count and half angles; depth rebuilds the "
+        // views.data holds both views; in the next frame, last frame's matrices as well.
+        const auto readViews = [&]
+        {
+            auto&      buffer = graph.getBuffer(must(findSceneResource(resources[0], kViewsData)));
+            const auto mapped = device.core.MapBuffer(buffer.handle, 0, sizeof(ViewsData));
+            require(mapped != nullptr, "Map views.data");
+            ViewsData result {};
+            std::memcpy(&result, mapped, sizeof(result));
+            device.core.UnmapBuffer(buffer.handle);
+            return result;
+        };
+        const auto first = readViews();
+        require(first.viewCount == 2, "views.data does not count two views");
+        for (size_t view = 0; view < 2; ++view)
+        {
+            const auto& entry = first.views[view];
+            require(entry.view == cameras[view].view && entry.projection == cameras[view].projection &&
+                        entry.previousView == entry.view && entry.previousProjection == entry.projection &&
+                        glm::all(glm::epsilonEqual(entry.tanHalfAngles, tangents[view], 1e-5f)),
+                    "views.data does not hold the views' matrices in the first frame");
+            const glm::mat4 identity = entry.viewProjection * entry.inverseViewProjection;
+            for (int column = 0; column < 4; ++column)
+            {
+                require(glm::all(glm::epsilonEqual(identity[column], glm::mat4(1)[column], 1e-4f)),
+                        "views.data's inverse view projection is not the inverse");
+            }
+        }
+        const auto moved = std::array {RenderCamera {glm::translate(cameras[0].view, glm::vec3(0.1f, 0, 0)),
+                                                     cameras[0].projection,
+                                                     cameras[0].nearPlane,
+                                                     cameras[0].farPlane},
+                                       cameras[1]};
+        must(forward->prepare(graph, moved, {}));
+        const auto second = readViews();
+        require(second.views[0].view == moved[0].view && second.views[0].previousView == cameras[0].view &&
+                    second.views[0].previousViewProjection == cameras[0].projection * cameras[0].view,
+                "views.data does not keep last frame's matrices");
+        std::cout << "Asymmetric frusta: camera.data and views.data hold the views; depth rebuilds the "
                      "analytic positions\n";
     }
 
