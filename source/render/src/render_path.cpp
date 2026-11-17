@@ -527,6 +527,12 @@ namespace vultra
                 return makeError("Render path {}: several views need distinct, non-empty names", m_Desc.name);
             }
         }
+        if (views.front().derived)
+        {
+            return makeError("Render path {}: the first view, {}, is rendered, not derived",
+                             m_Desc.name,
+                             views.front().name);
+        }
         m_ViewCount = 0;
         // The stages up to and including the upscale slot render at each view's render size.
         const auto upscale =
@@ -615,7 +621,7 @@ namespace vultra
         m_Auxiliary.clear();
         for (uint32_t view = 0; view < views.size(); ++view)
         {
-            for (size_t index = 0; index < m_Stages.size(); ++index)
+            for (size_t index = 0; index < m_Stages.size() && !views[view].derived; ++index)
             {
                 for (const auto& declared : m_Stages[index].desc.auxiliaryViews)
                 {
@@ -770,6 +776,10 @@ namespace vultra
             }
             for (uint32_t view = 0; view < views.size(); ++view)
             {
+                if (views[view].derived)
+                {
+                    continue;
+                }
                 SceneResources visible = frame;
                 visible.insert(visible.end(), perView[view].begin(), perView[view].end());
                 StageBuild build {graph, scene, environment, m_ViewDescs, view, visible, requests[index]};
@@ -797,10 +807,11 @@ namespace vultra
                 perView[view].insert(perView[view].end(), added->begin(), added->end());
             }
         }
-        for (auto& resources : perView)
+        for (uint32_t view = 0; view < views.size(); ++view)
         {
-            // Without a stage that provides scene.output, it is scene.hdr.
-            if (!findSceneResource(resources, kSceneOutput))
+            auto& resources = perView[view];
+            // Without a stage that provides scene.output, it is scene.hdr; a derived view has neither yet.
+            if (!views[view].derived && !findSceneResource(resources, kSceneOutput))
             {
                 const auto hdr = findSceneResource(resources, kSceneHdr);
                 if (!hdr)
@@ -963,7 +974,7 @@ namespace vultra
             glm::vec2  jitter {0};
             const auto unjittered = camera.projection * camera.view;
             const auto tangents   = tanHalfAngles(camera.projection);
-            if (m_Jitter != 0 && index < cameras.size())
+            if (m_Jitter != 0 && index < cameras.size() && !m_ViewDescs[index].derived)
             {
                 // Halton (2, 3) from its second point, which skips the corner (0, 0), centred on the pixel.
                 const uint32_t point = view.frame % m_Jitter + 1;
@@ -1021,6 +1032,11 @@ namespace vultra
             }
             for (uint32_t view = 0; view < cameras.size(); ++view)
             {
+                // The display stage runs for every view; the other view stages only for rendered ones.
+                if (m_ViewDescs[view].derived && !fillsDisplay(m_Desc, instance.slots))
+                {
+                    continue;
+                }
                 if (auto prepared =
                         instance.stage->prepare(graph, {jittered, view, lights, *m_Lights, instance.parameters});
                     !prepared)

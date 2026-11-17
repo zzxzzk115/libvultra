@@ -173,7 +173,9 @@ uploads them as one storage buffer of at most 64 `GpuLight` records (`LightData`
 uses it. `camera.data` is a constant buffer of `CameraData` per view: matrices and their inverses, the previous
 frame's view projection, position, image size and clip planes, the view's index, the count of the path's views
 and the tangents of the four half angles of its unjittered projection, written by `prepare()`. Frusta may be
-asymmetric, as a headset's eyes are: the path and its stages use the full matrices.
+asymmetric, as a headset's eyes are: the path and its stages use the full matrices. A `RenderView` may be
+derived: the path runs no view stage for it and gives it only the frame's resources and its `camera.data`; the
+caller makes its `scene.hdr` from other views' resources before `addDisplay()`. The first view is never derived.
 
 `vultra.forward` is the reference path, made of two stages: `vultra.mesh` (slot `geometry`, frame) imports the
 scene's vertex, index and primitive transform buffers as `scene.vertices`, `scene.indices` and

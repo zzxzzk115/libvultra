@@ -1933,6 +1933,68 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
                      "analytic positions\n";
     }
 
+    // A derived view runs no view stage: it has the frame's resources and its own camera.data, the caller gives it
+    // scene.hdr (here the left view's), the display runs for it, and the rendered view is as it is alone.
+    void derivedView(vultra::Device& device, vultra::Environment& environment)
+    {
+        using namespace vultra;
+        const auto gpu     = must(GpuScene::create(device, quadScene()));
+        const auto forward = must(createForwardPath(device));
+        static_cast<ForwardShadingStage*>(forward->stage("shading"))->settings.ibl = false;
+        RenderView left {"left", {48, 48}};
+        RenderView right {"right", {48, 48}};
+        right.derived = true;
+        const std::array views {left, right};
+        const std::array cameras {quadCamera({-0.4f, 0.2f, 6}), quadCamera({0.4f, -0.3f, 7})};
+        RenderGraph      graph(device);
+        const auto       resources = must(forward->addPasses(graph, *gpu, environment, views));
+        require(!findSceneResource(resources[1], kSceneHdr) && findSceneResource(resources[1], kCameraData) &&
+                    findSceneResource(resources[1], kSceneLights),
+                "A derived view must have camera.data and the frame's resources, and no scene.hdr");
+        const auto       hdr = must(findSceneResource(resources[0], kSceneHdr));
+        const std::array shown {hdr, hdr};
+        const auto       finals = must(forward->addDisplay(graph, shown, VriFormat_RGBA8_UNORM));
+        must(graph.exportResource(hdr));
+        for (const auto final : finals)
+        {
+            must(graph.exportResource(final));
+        }
+        must(graph.compile());
+        for (const auto& pass : graph.activePasses())
+        {
+            require(!pass.starts_with("right:") || pass.find("Tone") != std::string::npos,
+                    "A derived view ran the path's stage pass " + pass);
+        }
+        must(forward->prepare(graph, cameras, {}));
+        const auto frame = must(Frame::create(device));
+        run(*frame, graph);
+        auto&      buffer = graph.getBuffer(must(findSceneResource(resources[1], kCameraData)));
+        const auto mapped = device.core.MapBuffer(buffer.handle, 0, sizeof(CameraData));
+        require(mapped != nullptr, "Map camera.data");
+        CameraData data {};
+        std::memcpy(&data, mapped, sizeof(data));
+        device.core.UnmapBuffer(buffer.handle);
+        require(data.viewIndex == 1 && data.view == cameras[1].view,
+                "A derived view's camera.data does not hold its own camera");
+        const auto       image = must(readback(device, graph.getTexture(hdr)));
+        const RenderView alone {"main", {48, 48}};
+        require(image.rgba ==
+                    renderViews(device, *forward, *gpu, environment, std::span(&alone, 1), std::span(&cameras[0], 1))
+                        .front()
+                        .rgba,
+                "The rendered view changed next to a derived one");
+        require(must(readback(device, graph.getTexture(finals[0]))).rgba ==
+                    must(readback(device, graph.getTexture(finals[1]))).rgba,
+                "The display did not run for the derived view");
+
+        RenderGraph      wrong(device);
+        const std::array backwards {right, left};
+        const auto       refused = forward->addPasses(wrong, *gpu, environment, backwards);
+        require(!refused && refused.error().message.find("first view") != std::string::npos,
+                "A path whose first view is derived was accepted");
+        std::cout << "Derived view: no stages, own camera.data, display; the rendered view unchanged" << std::endl;
+    }
+
     // A parameter a stage reads when the graph is built: changing it, and only it, asks for a new graph, which
     // renders the probe at the new size. A build parameter the stage does not have is refused.
     void buildParameters(vultra::Device& device, vultra::Environment& environment)
@@ -2237,6 +2299,7 @@ int main()
     auxiliaryView(device, environment);
     buildParameters(device, environment);
     asymmetricFrustum(device, environment);
+    derivedView(device, environment);
     materialType(device, environment, directory);
     std::cout << "Forward path tests passed: constant HDR/IBL mip chain, BRDF LUT, upstream OpenPBR C++ reference, "
                  "material textures and live transforms\n";
