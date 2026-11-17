@@ -200,7 +200,10 @@ stage), the caller appends its own passes, and `RenderPath::addDisplay` turns th
 them. The builtin pack carries the sources of `vultra.material` with its cooked passes; `extractBuiltinPack()`
 writes the pack once per content hash, and its `builtin/shaders` and `external` are the include roots of programs
 that compile shaders importing it. Stage parameters (`StageDesc::parameters`) are changed with
-`RenderPath::setParameter` and reach the stage in `StageFrame::parameters`. Deferred,
+`RenderPath::setParameter` and reach the stage in `StageFrame::parameters`. Those a stage reads while it adds its
+passes, such as the size of an image, are listed in `StageDesc::buildParameters` and reach it in
+`StageBuild::parameters`; after one of them changed, `RenderPath::needsBuild()` is true until the caller builds the
+graph again. Deferred,
 clustered or shadowed rendering are other stages and paths, written against the same public interfaces.
 `ToneMappingPass`, `Environment` and `TextureBlit` are independent of the path.
 

@@ -1677,7 +1677,7 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
     }
 
     // A stage that renders the auxiliary view "probe" through the path's shading slot with a fixed camera and
-    // keeps its scene.hdr.
+    // keeps its scene.hdr. Its parameter "size" is the probe's width and height, read when the graph is built.
     class ProbeStage final : public vultra::RenderStage
     {
     public:
@@ -1690,7 +1690,10 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
         static vultra::StageDesc desc()
         {
             vultra::StageDesc result {"test.probe", {"probe"}, vultra::StageScope::eView, {}, {}};
-            result.auxiliaryViews = {{"probe", {"shading"}}};
+            result.auxiliaryViews  = {{"probe", {"shading"}}};
+            result.parameters      = {{"size", 65, 1, 256, "Size", "The probe's width and height"},
+                                      {"gain", 1, 0, 2, "Gain", "Read by nothing; changing it needs no new graph"}};
+            result.buildParameters = {"size"};
             return result;
         }
 
@@ -1713,8 +1716,9 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
         std::expected<vultra::SceneResources, vultra::Error> addPasses(vultra::StageBuild& build) override
         {
             using namespace vultra;
+            const auto size     = uint32_t(build.parameters[0]);
             const auto rendered = build.addView("probe",
-                                                {65, 65},
+                                                {size, size},
                                                 [camera = m_Camera](const RenderCamera&, std::span<const RenderLight>)
                                                 {
                                                     return camera;
@@ -1836,6 +1840,46 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
                       "which asks for views itself"),
                 "A probe of a stage that asks for views itself must be refused");
         std::cout << "Auxiliary view: rendered per view under <view>.probe, equal to its camera rendered alone\n";
+    }
+
+    // A parameter a stage reads when the graph is built: changing it, and only it, asks for a new graph, which
+    // renders the probe at the new size. A build parameter the stage does not have is refused.
+    void buildParameters(vultra::Device& device, vultra::Environment& environment)
+    {
+        using namespace vultra;
+        const auto           gpu = must(GpuScene::create(device, quadScene()));
+        ProbeStage::Seen     seen;
+        const std::array     stages {meshStage(),
+                                 forwardShadingStage(device.graphicsAPI()),
+                                 ProbeStage::type(seen, quadCamera({0.6f, 0.4f, 6}))};
+        const RenderPathDesc desc {
+            "test.probed",
+            {{"geometry", "vultra.mesh"}, {"shading", "vultra.forward_shading"}, {"probe", "test.probe"}}};
+        const auto       path = must(RenderPath::create(device, desc, stages));
+        const RenderView view {"main", {32, 32}};
+        const auto       probeWidth = [&]
+        {
+            RenderGraph graph(device);
+            must(path->addPasses(graph, *gpu, environment, std::span(&view, 1)));
+            must(graph.exportResource(seen.hdr.back()));
+            must(graph.compile());
+            return graph.getTexture(seen.hdr.back()).desc.width;
+        };
+        require(probeWidth() == 65 && !path->needsBuild(), "The probe was not built at its default size");
+        must(path->setParameter("probe", "gain", 0.5));
+        must(path->setParameter("probe", "size", 65));
+        require(!path->needsBuild(), "A parameter read by no build, or an unchanged one, asked for a new graph");
+        must(path->setParameter("probe", "size", 33));
+        require(path->needsBuild(), "Changing a build parameter did not ask for a new graph");
+        require(probeWidth() == 33 && !path->needsBuild(), "The new graph did not build the probe at the new size");
+
+        auto unknown                 = ProbeStage::type(seen, {});
+        unknown.desc.buildParameters = {"radius"};
+        const std::array wrong {meshStage(), forwardShadingStage(device.graphicsAPI()), unknown};
+        const auto       refused = RenderPath::create(device, desc, wrong);
+        require(!refused && refused.error().message.find("builds with radius") != std::string::npos,
+                "A build parameter the stage does not have was accepted");
+        std::cout << "Build parameters: a change asks for a new graph, which builds with the new value\n";
     }
 
     // One path, two views: frame stages run once, view stages once per view, and each view equals a
@@ -2100,6 +2144,7 @@ int main()
     pathValidation();
     twoViews(device, environment, directory);
     auxiliaryView(device, environment);
+    buildParameters(device, environment);
     materialType(device, environment, directory);
     std::cout << "Forward path tests passed: constant HDR/IBL mip chain, BRDF LUT, upstream OpenPBR C++ reference, "
                  "material textures and live transforms\n";

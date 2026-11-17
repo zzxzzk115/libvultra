@@ -88,6 +88,9 @@ Added:
   `AuxiliaryCamera`, `StageFrame::auxiliary`, `StageBuild::pathViews`, `PathIssueKind::eAuxiliaryView`) and the
   standard name `scene.shadow_mask`. The shadow map stage that uses them, `vultra.shadow_map`, is in
   Vultra-Packages.
+- Build parameters (2026-11-17): `StageDesc::buildParameters`, `StageBuild::parameters` and
+  `RenderPath::needsBuild()`, for stage parameters that size graph resources, such as the shadow map size of
+  `vultra.shadow_map`.
 - Slang user-attribute and field-initializer reflection, stored in cooked programs.
 - A render graph execution plan with batches per queue, async compute through `execute(Frame&)`, and
   `writeDot()`.
