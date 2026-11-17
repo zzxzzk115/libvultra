@@ -320,6 +320,19 @@ namespace
             must(graph.createBuffer("buffer", {64, 0, VriBufferUsage_StorageBuffer, VriMemoryLocation_Device}));
         const std::array bufferInput {buffer};
         expectError(catalog.build(graph, "research.color_gain", "gain", bufferInput), "gain.source");
+        // A buffer port's element size is checked against the stride of the buffer connected to it.
+        auto strided   = research::colorGainDefinition();
+        strided.type   = "strided";
+        strided.inputs = {{"elements", PassResourceKind::eBuffer, VriFormat_Unknown, {}, "", "", 16}};
+        must(catalog.add(std::move(strided)));
+        const auto wide =
+            must(graph.createBuffer("wide", {64, 4, VriBufferUsage_StorageBuffer, VriMemoryLocation_Device}));
+        const std::array wideInput {wide};
+        expectError(catalog.build(graph, "strided", "strided", wideInput), "elements of 16 bytes");
+        auto textured   = research::colorGainDefinition();
+        textured.type   = "textured";
+        textured.inputs = {{"source", PassResourceKind::eTexture, VriFormat_RGBA16_SFLOAT, {}, "", "", 4}};
+        expectError(catalog.add(std::move(textured)), "no element size");
         auto matchingInputs = research::colorGainDefinition();
         matchingInputs.type = "matching_inputs";
         matchingInputs.inputs.push_back({"reference", PassResourceKind::eTexture, VriFormat_RGBA16_SFLOAT, 0});
