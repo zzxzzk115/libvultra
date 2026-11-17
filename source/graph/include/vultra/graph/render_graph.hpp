@@ -149,7 +149,10 @@ namespace vultra
         // History belongs to this graph. Its initial value is restored in every mip and layer before the first use
         // after a reset; with more than one mip that needs transfer-source usage as well.
         [[nodiscard]] std::expected<Resource, Error>
-                 createHistoryTexture(std::string name, const VriTextureDesc& desc, VriClearColor initial = {});
+        createHistoryTexture(std::string name, const VriTextureDesc& desc, VriClearColor initial = {});
+        // History as a buffer, for data a texture cannot hold: zero before its first use after a reset, with the
+        // same resetHistory() and historyEpoch(). Needs storage and transfer-destination usage.
+        [[nodiscard]] std::expected<Resource, Error> createHistoryBuffer(std::string name, const VriBufferDesc& desc);
         void     resetHistory(); // Between completed frames; keep allocations and descriptor identities.
         uint64_t historyEpoch() const;
         [[nodiscard]] std::expected<void, Error>
@@ -266,6 +269,9 @@ namespace vultra
         bool                       m_Compiled     = false;
         bool                       m_Aliased      = false;
         bool                       m_ResetHistory = true;
-        uint64_t                   m_HistoryEpoch = 1;
+        // Zeros the reset copies into history buffers: one upload buffer of the largest one's size. VRI has no
+        // buffer clear on every API, and a copy is one path everywhere.
+        std::unique_ptr<Buffer> m_HistoryZeros;
+        uint64_t                m_HistoryEpoch = 1;
     };
 } // namespace vultra

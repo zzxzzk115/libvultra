@@ -680,6 +680,26 @@ namespace vultra
         return resource;
     }
 
+    std::expected<RenderGraph::Resource, Error> RenderGraph::createHistoryBuffer(std::string          name,
+                                                                                 const VriBufferDesc& desc)
+    {
+        if (!(desc.usage & VriBufferUsage_StorageBuffer) || !(desc.usage & VriBufferUsage_TransferDst) ||
+            desc.memoryLocation != VriMemoryLocation_Device)
+        {
+            return makeError("History buffer {} needs storage and transfer-destination usage in device memory", name);
+        }
+        const auto resource = createBuffer(std::move(name), desc);
+        if (!resource)
+        {
+            return resource;
+        }
+        auto& entry       = m_Resources[resource->index];
+        entry.history     = true;
+        entry.initialized = true;
+        m_ResetHistory    = true;
+        return resource;
+    }
+
     void RenderGraph::resetHistory()
     {
         if (m_HistoryEpoch == UINT64_MAX)
@@ -1172,6 +1192,31 @@ namespace vultra
                 ends[index] = entry.lastUse;
             }
         }
+        uint64_t zeros = 0;
+        for (const auto& entry : m_Resources)
+        {
+            if (entry.history && !entry.isTexture)
+            {
+                zeros = std::max(zeros, entry.bufferDesc.size);
+            }
+        }
+        if (zeros > 0 && (!m_HistoryZeros || m_HistoryZeros->desc.size < zeros))
+        {
+            auto buffer =
+                Buffer::create(m_Device, {zeros, 0, VriBufferUsage_TransferSrc, VriMemoryLocation_HostUpload});
+            if (!buffer)
+            {
+                return withContext("history zeros", buffer.error());
+            }
+            auto* mapped = m_Device.core.MapBuffer(buffer->handle, 0, zeros);
+            if (!mapped)
+            {
+                return makeError("Map the zeros of the history buffers");
+            }
+            std::memset(mapped, 0, zeros);
+            m_Device.core.UnmapBuffer(buffer->handle);
+            m_HistoryZeros = std::make_unique<Buffer>(std::move(*buffer));
+        }
         m_Aliased  = aliasTransients;
         m_Compiled = true;
         return {};
@@ -1191,6 +1236,13 @@ namespace vultra
         m_Device.core.CmdBeginDebugGroup(cmd, "Reset graph history");
         for (auto& entry : m_Resources)
         {
+            if (entry.history && entry.buffer)
+            {
+                entry.buffer->transition(cmd, {VriAccess_CopyDestinationWrite, VriPipelineStage_Transfer});
+                const VriBufferCopyDesc copy {0, 0, entry.bufferDesc.size};
+                m_Device.core.CmdCopyBuffer(cmd, entry.buffer->handle, m_HistoryZeros->handle, &copy);
+                continue;
+            }
             if (!entry.history || !entry.texture)
             {
                 continue;

@@ -95,7 +95,8 @@ Added:
   `viewCount` (528 bytes); `GraphDefinition::build` takes a view name. The host's two-eye session, `.vheadset` and
   `--headless --stereo` are in Vultra-CLI. Derived views: `RenderView::derived` (the host's derive graph makes
   their `scene.hdr`). `views.data` (`ViewsData`, two views and a count; `[VultraViews]` in the host). History
-  buffers (C1) and `stereo.derive_slots` (C3) are not done.
+  buffers (C1): `RenderGraph::createHistoryBuffer`, zeroed by a copy from one upload buffer on every API.
+  `stereo.derive_slots` (C3) is not done.
 - Slang user-attribute and field-initializer reflection, stored in cooked programs.
 - A render graph execution plan with batches per queue, async compute through `execute(Frame&)`, and
   `writeDot()`.
