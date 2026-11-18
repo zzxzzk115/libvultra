@@ -36,15 +36,16 @@ namespace vultra
         SceneMaterials(const SceneMaterials&)            = delete;
         SceneMaterials& operator=(const SceneMaterials&) = delete;
 
-        // Replaces `primitives` with the drawable primitives whose bounds meet the frustum of `viewProjection`.
-        void cull(const glm::mat4& viewProjection, std::vector<uint32_t>& primitives) const;
+        // Replaces `draws` with the scene's draws whose bounds meet the frustum of `viewProjection`.
+        void cull(const glm::mat4& viewProjection, std::vector<uint32_t>& draws) const;
 
-        // Draws `primitives` from the scene's vertex and index buffers. `pipelines` holds one pipeline per variant:
+        // Draws `draws` (into GpuScene::draws) from the scene's vertex and index buffers; the push constants carry each
+        // draw's instance and material. `pipelines` holds one pipeline per variant:
         // bit 0 double-sided, bit 1 mirrored front face. After each pipeline change, `set0` is bound as set 0.
         void draw(VriCommandBuffer*                cmd,
                   Buffer&                          vertices,
                   Buffer&                          indices,
-                  std::span<const uint32_t>        primitives,
+                  std::span<const uint32_t>        draws,
                   std::span<VriPipeline* const, 4> pipelines,
                   VriDescriptorSet*                set0) const;
 

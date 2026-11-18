@@ -7,7 +7,7 @@ import vultra.materials;
 
 [shader("vertex")] SurfaceVertex vertexMain(MeshVertex input)
 {
-    return vultraTransformVertex(input, primitiveTransforms[material.instance.x], frame.viewProjection);
+    return vultraTransformVertex(input, instances[material.instance.x], frame.viewProjection);
 }
 
 // The bound material's surface with the frame's roughness and metalness overrides; negative overrides keep it.
@@ -58,7 +58,7 @@ struct GBufferOutput
 
 [shader("vertex")] GBufferVertex vertexGBuffer(MeshVertex input)
 {
-    PrimitiveTransform instance = primitiveTransforms[material.instance.x];
+    InstanceData instance = instances[material.instance.x];
     GBufferVertex      result;
     result.surface      = vultraTransformVertex(input, instance, frame.viewProjection);
     result.clip         = result.surface.position;

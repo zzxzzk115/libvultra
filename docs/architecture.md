@@ -143,7 +143,11 @@ passes and the resources and history they create are named `<view>:<id>`, so one
 
 ## Rendering
 
-`GpuScene` uploads `SceneData` geometry, materials and textures. A **render path** turns a scene into named
+`GpuScene` uploads `SceneData` geometry, materials and textures. Its geometry is stored once per **model** (`SceneModel`:
+a range of the scene's primitives and materials) and drawn by **instances** (`SceneInstance`: a model's primitive
+range, its first material and a transform of its own); without them the scene is one model drawn once. An instance
+with materials of its own points at copies of its model's. `GpuScene::draws` lists every primitive of every instance,
+which is what stages cull and draw. A **render path** turns a scene into named
 graph resources. It is an ordered list of **slots**, each filled by a **stage**:
 
 - `StageDesc` describes a stage without a device: its name, the slots it can fill (a stage with several fills
@@ -183,11 +187,11 @@ frame's resources and its `camera.data`; the caller makes its `scene.hdr` from o
 `addDisplay()`. The first view is never derived.
 
 `vultra.forward` is the reference path, made of two stages: `vultra.mesh` (slot `geometry`, frame) imports the
-scene's vertex, index and primitive transform buffers as `scene.vertices`, `scene.indices` and
-`scene.instances`; `vultra.forward_shading` (slot `shading`, view) draws a skybox and one opaque OpenPBR forward
+scene's vertex and index buffers, one `InstanceData` per instance and one `ModelData` per model as
+`scene.vertices`, `scene.indices`, `scene.instances` and `scene.models`; `vultra.forward_shading` (slot `shading`, view) draws a skybox and one opaque OpenPBR forward
 pass with analytic lights and image-based lighting. It has no shadows, transparency or mesh shading. A stage returns
 what `StageBuild::requested` names and may leave out other resources it provides: forward shading writes the
-surface layers (`scene.normal` to `scene.motion`) only when something reads one. Motion compares each primitive
+surface layers (`scene.normal` to `scene.motion`) only when something reads one. Motion compares each instance
 with where the previous frame drew it, so a host calls `GpuScene::beginFrame()` once per frame. Stages that
 rasterize the scene with its materials use `SceneMaterials` and the Slang module `vultra.material`.
 

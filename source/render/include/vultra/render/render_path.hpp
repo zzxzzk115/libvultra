@@ -50,7 +50,8 @@ namespace vultra
     inline constexpr std::string_view kUpscaleSlot    = "upscale";
     inline constexpr std::string_view kSceneVertices  = "scene.vertices";  // Buffer of SceneVertex.
     inline constexpr std::string_view kSceneIndices   = "scene.indices";   // Buffer of uint32 indices.
-    inline constexpr std::string_view kSceneInstances = "scene.instances"; // Buffer of PrimitiveTransform.
+    inline constexpr std::string_view kSceneInstances = "scene.instances"; // Buffer of InstanceData.
+    inline constexpr std::string_view kSceneModels    = "scene.models";    // Buffer of ModelData.
     // The scene's materials: a MaterialHeader (type and parameter offset) per material number, and the parameter
     // blocks as 32-bit words. Lighting passes read them to call a material type's shade() (vultra.materials).
     inline constexpr std::string_view kSceneMaterials    = "scene.materials";

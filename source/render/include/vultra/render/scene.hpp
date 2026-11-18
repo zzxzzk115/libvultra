@@ -22,14 +22,53 @@ namespace vultra
         glm::vec3 extent {0};
     };
 
-    // One record of the primitive transform buffer, scene.instances. Keep in sync with
-    // builtin/shaders/resources/primitive_transform.slangh.
-    struct PrimitiveTransform
+    // A model of a scene: geometry stored once, which instances draw. Its primitives and materials are ranges of the
+    // scene's; the primitives' material numbers are the scene's too.
+    struct SceneModel
     {
-        glm::mat4 model;
-        glm::mat4 normal;
-        glm::vec4 properties;    // Tangent handedness, conservative sphere scale.
-        glm::mat4 previousModel; // The model where the previous frame drew the primitive.
+        uint32_t firstPrimitive = 0;
+        uint32_t primitiveCount = 0;
+        uint32_t firstMaterial  = 0;
+        uint32_t materialCount  = 0;
+    };
+
+    // An entity that draws primitives of a model with its own transform: primitives [firstPrimitive,
+    // firstPrimitive + primitiveCount) of the model, counted from the model's first. A primitive's material is
+    // firstMaterial plus its material's place among the model's materials, so an instance with materials of its own
+    // points at copies.
+    struct SceneInstance
+    {
+        uint32_t model          = 0;
+        uint32_t firstPrimitive = 0;
+        uint32_t primitiveCount = 0;
+        uint32_t firstMaterial  = 0;
+    };
+
+    // One primitive of one instance: what a stage draws and culls.
+    struct SceneDraw
+    {
+        uint32_t instance  = 0;
+        uint32_t primitive = 0; // Into GpuScene::primitives.
+        uint32_t material  = 0; // Into GpuScene::materials, resolved for the instance.
+    };
+
+    // One record of scene.instances. Keep in sync with builtin/shaders/resources/instance_data.slangh.
+    struct InstanceData
+    {
+        glm::mat4  model;
+        glm::mat4  normal;
+        glm::vec4  properties;    // Tangent handedness, conservative sphere scale.
+        glm::mat4  previousModel; // Where the previous frame drew the instance.
+        glm::uvec4 references;    // Model, first primitive (of the scene), primitive count, first material.
+    };
+
+    // One record of scene.models. Keep in sync with builtin/shaders/resources/instance_data.slangh.
+    struct ModelData
+    {
+        uint32_t firstPrimitive;
+        uint32_t primitiveCount;
+        uint32_t firstMaterial;
+        uint32_t materialCount;
     };
 
     // The material type of model files, vultra.openpbr, is number 0 in every program's vultra.materials.
@@ -49,12 +88,15 @@ namespace vultra
     class GpuScene
     {
     public:
-        // Render paths and servers keep the scene's address, so it lives behind a unique_ptr.
+        // Render paths and servers keep the scene's address, so it lives behind a unique_ptr. Without models the
+        // scene is one model; without instances each model is drawn once, whole.
         [[nodiscard]] static std::expected<std::unique_ptr<GpuScene>, Error>
-        create(Device&                 device,
-               const SceneData&        scene,
-               const PreparedTextures& textures,
-               const MeshletData*      meshlets = nullptr);
+        create(Device&                        device,
+               const SceneData&               scene,
+               const PreparedTextures&        textures,
+               const MeshletData*             meshlets  = nullptr,
+               std::span<const SceneModel>    models    = {},
+               std::span<const SceneInstance> instances = {});
 #ifdef VULTRA_WITH_SCENE_PREPARATION
         [[nodiscard]] static std::expected<std::unique_ptr<GpuScene>, Error>
         create(Device& device, const SceneData& scene, bool meshShading = false, uint32_t workers = 0);
@@ -63,13 +105,13 @@ namespace vultra
 #endif
         GpuScene(const GpuScene&)            = delete;
         GpuScene& operator=(const GpuScene&) = delete;
-        // The caller writes only after the previous frame completes. Until the first beginFrame(), a primitive's
+        // The caller writes only after the previous frame completes. Until the first beginFrame(), an instance's
         // previous model follows its model, so transforms set while loading have no motion.
-        [[nodiscard]] std::expected<void, Error>
-                               setPrimitiveTransforms(uint32_t first, uint32_t count, const glm::mat4& transform);
-        bool                   primitiveMirrored(uint32_t index) const;
-        const glm::mat4&       primitiveTransform(uint32_t index) const;
-        const PrimitiveBounds& primitiveBounds(uint32_t index) const;
+        [[nodiscard]] std::expected<void, Error> setInstanceTransform(uint32_t instance, const glm::mat4& transform);
+        bool                                     instanceMirrored(uint32_t instance) const;
+        const glm::mat4&                         instanceTransform(uint32_t instance) const;
+        // The box around a draw where its instance is now.
+        const PrimitiveBounds& drawBounds(uint32_t draw) const;
         uint64_t               transformRevision() const;
         // Starts a frame for motion vectors: the models of the last frame become the previous models, and what
         // this frame sets moves primitives away from them. Call once per frame, after the previous frame
@@ -89,7 +131,8 @@ namespace vultra
         // Seven independently typed material slots; color slots use sRGB views.
         std::unique_ptr<Buffer> vertices;
         std::unique_ptr<Buffer> indices;
-        std::unique_ptr<Buffer> transforms;
+        std::unique_ptr<Buffer> instanceData;    // scene.instances: an InstanceData per instance.
+        std::unique_ptr<Buffer> modelData;       // scene.models: a ModelData per model.
         std::unique_ptr<Buffer> materialHeaders; // scene.materials: a MaterialHeader per material.
         std::unique_ptr<Buffer> materialData;    // scene.material_data: the parameter blocks, as 32-bit words.
         std::vector<std::unique_ptr<Texture>>                    textures;
@@ -97,6 +140,9 @@ namespace vultra
         std::vector<SurfaceMaterial>                             materials;
         std::vector<VriSamplerDesc>                              samplers;
         std::vector<ScenePrimitive>                              primitives;
+        std::vector<SceneModel>                                  models;
+        std::vector<SceneInstance>                               instances;
+        std::vector<SceneDraw>                                   draws; // Every primitive of every instance.
         glm::vec3                                                center;
         float                                                    radius;
         std::unique_ptr<GpuMeshlets>                             meshlets;
@@ -107,12 +153,13 @@ namespace vultra
         [[nodiscard]] std::expected<void, Error> uploadMaterials();
 
         Device&                      m_Device;
-        std::vector<uint8_t>         m_Mirrored;
+        std::vector<uint8_t>         m_Mirrored; // Per instance, like the transforms.
         std::vector<glm::mat4>       m_Transforms;
         std::vector<glm::mat4>       m_PreviousTransforms;
+        std::vector<uint32_t>        m_FirstDraw; // Per instance: its first draw; its draws follow in order.
         bool                         m_FrameStarted = false;
-        std::vector<PrimitiveBounds> m_LocalBounds;
-        std::vector<PrimitiveBounds> m_WorldBounds;
+        std::vector<PrimitiveBounds> m_LocalBounds; // Per primitive.
+        std::vector<PrimitiveBounds> m_WorldBounds; // Per draw.
         uint64_t                     m_TransformRevision = 0;
         std::vector<MaterialHeader>  m_MaterialHeaders;
         std::vector<uint32_t>        m_MaterialWords;

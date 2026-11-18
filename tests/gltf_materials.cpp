@@ -181,15 +181,15 @@ namespace
                 must(graph.compile());
                 for (uint32_t material = 0; material < 12; ++material)
                 {
-                    gpu->primitives[0].material = material;
+                    gpu->draws[0].material      = material;
                     renderer.settings.debugMode = 1;
                     nearColor(render(device, renderer, graph, outputs, camera()),
-                         sampledColor(material, lod),
-                         "glTF wrap/filter/mipmap sampling differs from the reference");
+                              sampledColor(material, lod),
+                              "glTF wrap/filter/mipmap sampling differs from the reference");
                     renderer.settings.debugMode = 5;
                     nearColor(render(device, renderer, graph, outputs, camera()),
-                         sampledColor((material + 1) % 12, lod),
-                         "Two slots sharing an image lost their independent samplers");
+                              sampledColor((material + 1) % 12, lod),
+                              "Two slots sharing an image lost their independent samplers");
                 }
             }
         }
@@ -214,26 +214,26 @@ namespace
                 const auto          outputs = renderer.addPasses(graph, {kSize, kSize});
                 must(graph.exportResource(outputs.hdr));
                 must(graph.compile());
-                gpu->primitives[0].material = 0;
+                gpu->draws[0].material = 0;
                 nearColor(render(device, renderer, graph, outputs, camera()),
-                     {0.5f, 0.5f, 1},
-                     "Front face was culled or reversed");
+                          {0.5f, 0.5f, 1},
+                          "Front face was culled or reversed");
                 nearColor(render(device, renderer, graph, outputs, camera(true)),
-                     kBackground,
-                     "Single-sided back face was drawn");
-                gpu->primitives[0].material = 12;
-                auto normal                 = glm::vec3(204, 128, 230) / 255.0f * 2.0f - 1.0f;
+                          kBackground,
+                          "Single-sided back face was drawn");
+                gpu->draws[0].material = 12;
+                auto normal            = glm::vec3(204, 128, 230) / 255.0f * 2.0f - 1.0f;
                 if (mirrored)
                 {
                     normal.x = -normal.x;
                 }
                 normal = glm::normalize(normal);
                 nearColor(render(device, renderer, graph, outputs, camera()),
-                     normal * 0.5f + 0.5f,
-                     "Authored/generated/mirrored tangent frame differs from the reference");
+                          normal * 0.5f + 0.5f,
+                          "Authored/generated/mirrored tangent frame differs from the reference");
                 nearColor(render(device, renderer, graph, outputs, camera(true)),
-                     -normal * 0.5f + 0.5f,
-                     "Double-sided back face did not reverse the perturbed normal");
+                          -normal * 0.5f + 0.5f,
+                          "Double-sided back face did not reverse the perturbed normal");
             }
         }
         std::cout << "glTF sidedness: front/back, mirrored transforms, authored/generated TBN\n";
