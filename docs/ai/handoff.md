@@ -98,10 +98,14 @@ Added:
   buffers (C1): `RenderGraph::createHistoryBuffer`, zeroed by a copy from one upload buffer on every API.
   `RenderView::slots`: a derived view runs the view stages of the slots it lists (C3, `stereo.derive_slots` in the
   host).
-- M9 part a (2026-11-18), in progress: models and instances in `GpuScene` (`SceneModel`, `SceneInstance`,
-  `SceneDraw`, `InstanceData`/`ModelData`, `scene.models`); named scene buffers (`addBuffer`, `buffer`); geometry
-  processors cached with the model (`GeometryProcessor`, `ImportedAsset::buffers`, `StageDesc::geometryProcessor`).
-  `vultra.meshlets` and `example.visibility_buffer` are in Vultra-Packages.
+- M9 part a (done 2026-11-18): models and instances in `GpuScene` (`SceneModel`, `SceneInstance`, `SceneDraw`,
+  `InstanceData`/`ModelData`, `scene.models`); named scene buffers (`addBuffer`, `buffer`); geometry processors
+  cached with the model (`GeometryProcessor`, `ImportedAsset::buffers`, `StageDesc::geometryProcessor`); material
+  sampling with explicit gradients (`vultraSampleMaterial`); stage factories receive `StageSources`;
+  `StageDesc::optionalFeatures` with optional features in `Device::create` and `AppConfig`; `Usage::eIndirectBuffer`,
+  `meshletBound`, `SceneMaterials::set`. `vultra.meshlets` and `example.visibility_buffer` are in Vultra-Packages;
+  the latter resolves materials with one dispatch per material on every API, a deviation from the owner's card for
+  descriptor arrays recorded in the plans (R42).
 - Slang user-attribute and field-initializer reflection, stored in cooked programs.
 - A render graph execution plan with batches per queue, async compute through `execute(Frame&)`, and
   `writeDot()`.
