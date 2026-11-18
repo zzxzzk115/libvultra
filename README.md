@@ -90,7 +90,6 @@ Follow [AGENTS.md](AGENTS.md), the checked-in formatting and static-analysis rul
 - [argparse](https://github.com/p-ranav/argparse): command-line argument parsing
 - [spdlog](https://github.com/gabime/spdlog): console and file logging
 - [stb](https://github.com/nothings/stb): image loading, SIMD mip filtering and PNG writing
-- [NVIDIA FLIP](https://github.com/NVlabs/flip): vendored perceptual image-difference header ([BSD-3-Clause provenance](external/flip/README.vultra.md))
 - [VTask](https://github.com/zzxzzk115/vtask): parallel loading, geometry and texture import jobs
 - [meshoptimizer](https://github.com/zeux/meshoptimizer): meshlet construction and bounds
 - [OpenFBX](https://github.com/nem0/OpenFBX): static FBX scene loading
