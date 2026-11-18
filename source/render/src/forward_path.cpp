@@ -214,7 +214,7 @@ namespace vultra
                   bufferResource(kSceneModels, sizeof(ModelData)),
                   bufferResource(kSceneMaterials, sizeof(MaterialHeader)),
                   bufferResource(kSceneMaterialData, sizeof(uint32_t))}},
-                [](Device&, const AssetSource*) -> std::expected<std::unique_ptr<RenderStage>, Error>
+                [](Device&, const StageSources&) -> std::expected<std::unique_ptr<RenderStage>, Error>
                 {
                     return std::make_unique<MeshStage>();
                 }};
@@ -235,10 +235,10 @@ namespace vultra
                   {std::string(kSceneLights)},
                   {std::string(kCameraData)}},
                  std::move(provides)},
-                [materialShaders](Device&            device,
-                                  const AssetSource* shaders) -> std::expected<std::unique_ptr<RenderStage>, Error>
+                [materialShaders](Device&             device,
+                                  const StageSources& sources) -> std::expected<std::unique_ptr<RenderStage>, Error>
                 {
-                    auto stage = ForwardShadingStage::create(device, shaders, materialShaders);
+                    auto stage = ForwardShadingStage::create(device, sources.shaders, materialShaders);
                     if (!stage)
                     {
                         return std::unexpected(stage.error());
@@ -258,7 +258,7 @@ namespace vultra
     std::expected<std::unique_ptr<RenderPath>, Error> createForwardPath(Device& device, const AssetSource* shaders)
     {
         const std::array stages {meshStage(), forwardShadingStage(device.graphicsAPI()), toneMappingStage()};
-        return RenderPath::create(device, forwardPathDesc(), stages, shaders);
+        return RenderPath::create(device, forwardPathDesc(), stages, {shaders});
     }
 
     ForwardShadingStage::ForwardShadingStage(Device& device) :

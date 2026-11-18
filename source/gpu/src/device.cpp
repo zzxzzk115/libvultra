@@ -45,15 +45,35 @@ namespace vultra
             return desc;
         }
 
-        std::expected<VriDevice*, Error> selectDevice(VriDeviceCreationDesc desc)
+        // Creates the best device that has every feature of desc.enabledFeatures (unless desc.bestEffort) and asks
+        // for `optionalFeatures` as well, which a device may lack.
+        std::expected<VriDevice*, Error> selectDevice(VriDeviceCreationDesc desc, uint64_t optionalFeatures)
         {
+            const uint64_t required     = desc.enabledFeatures;
+            const bool     allowMissing = desc.bestEffort != 0;
+            desc.enabledFeatures |= optionalFeatures;
             // OpenXR's creation hooks mandate a physical device; do not probe or override it.
             if (desc.nativeCreateInfo)
             {
+                desc.bestEffort   = allowMissing || optionalFeatures != 0;
                 VriDevice* device = nullptr;
                 if (auto created = check(vriCreateDevice(&desc, &device), "Create runtime-selected device"); !created)
                 {
                     return std::unexpected(created.error());
+                }
+                VriCoreInterface core {};
+                if (auto found = check(vriGetInterface(device, VRI_INTERFACE_CORE, sizeof(core), &core),
+                                       "Get runtime-selected core interface");
+                    !found)
+                {
+                    vriDestroyDevice(device);
+                    return std::unexpected(found.error());
+                }
+                const auto missing = required & ~core.GetDeviceDesc(device)->enabledFeatures;
+                if (!allowMissing && missing)
+                {
+                    vriDestroyDevice(device);
+                    return makeError("The runtime-selected GPU lacks required features 0x{:x}", missing);
                 }
                 return device;
             }
@@ -78,8 +98,7 @@ namespace vultra
             Score       bestScore {};
             // VRI exposes granted features and queue counts only after device creation. Probe once
             // at startup, retain the best complete device and destroy every rejected candidate.
-            const bool allowMissing = desc.bestEffort != 0;
-            desc.bestEffort         = VRI_TRUE;
+            desc.bestEffort = VRI_TRUE;
             for (uint32_t index = 0; index < count; ++index)
             {
                 desc.adapterIndex           = index;
@@ -104,7 +123,7 @@ namespace vultra
                     return std::unexpected(found.error());
                 }
                 const auto& info    = *candidateCore.GetDeviceDesc(candidate.get());
-                const auto  missing = desc.enabledFeatures & ~info.enabledFeatures;
+                const auto  missing = required & ~info.enabledFeatures;
                 if ((!allowMissing && missing) || info.queueCount[VriQueueType_Graphics] == 0)
                 {
                     Logger::core().info("Skipping GPU {} ({}): missing features=0x{:x}, graphics queues={}",
@@ -148,7 +167,7 @@ namespace vultra
             }
             if (!selected)
             {
-                return makeError("No GPU provides required features 0x{:x} and a graphics queue", desc.enabledFeatures);
+                return makeError("No GPU provides required features 0x{:x} and a graphics queue", required);
             }
             return selected.release();
         }
@@ -216,16 +235,22 @@ namespace vultra
                                                                  bool                            validation,
                                                                  const void*                     nativeCreateInfo,
                                                                  uint64_t                        features,
-                                                                 bool                            bestEffort)
+                                                                 bool                            bestEffort,
+                                                                 uint64_t                        optionalFeatures)
     {
         if (apis.empty())
         {
-            return create(validation, nativeCreateInfo, features, bestEffort);
+            const auto automatic = automaticGraphicsAPIs();
+            if (!automatic)
+            {
+                return std::unexpected(automatic.error());
+            }
+            return create(*automatic, validation, nativeCreateInfo, features, bestEffort, optionalFeatures);
         }
         std::string failures;
         for (const auto api : apis)
         {
-            auto device = create(api, validation, nativeCreateInfo, features, bestEffort);
+            auto device = create(api, validation, nativeCreateInfo, features, bestEffort, optionalFeatures);
             if (device)
             {
                 return device;
@@ -246,7 +271,8 @@ namespace vultra
                                                                  bool           validation,
                                                                  const void*    nativeCreateInfo,
                                                                  uint64_t       features,
-                                                                 bool           bestEffort)
+                                                                 bool           bestEffort,
+                                                                 uint64_t       optionalFeatures)
     {
         if (std::ranges::find(graphicsAPIs(), api) == graphicsAPIs().end())
         {
@@ -257,7 +283,7 @@ namespace vultra
             }
             return makeError("This build has no {} support (libvultra_graphics_apis: {})", graphicsAPIName(api), built);
         }
-        return create(creationDesc(api, validation, nativeCreateInfo, features, bestEffort), true);
+        return create(creationDesc(api, validation, nativeCreateInfo, features, bestEffort), true, optionalFeatures);
     }
 
     VriGraphicsAPI Device::graphicsAPI() const
@@ -267,11 +293,11 @@ namespace vultra
 
     std::expected<std::unique_ptr<Device>, Error> Device::create(const VriDeviceCreationDesc& requested)
     {
-        return create(requested, false);
+        return create(requested, false, 0);
     }
 
-    std::expected<std::unique_ptr<Device>, Error> Device::create(const VriDeviceCreationDesc& requested,
-                                                                 bool                         automaticSelection)
+    std::expected<std::unique_ptr<Device>, Error>
+    Device::create(const VriDeviceCreationDesc& requested, bool automaticSelection, uint64_t optionalFeatures)
     {
         static const VriCallbackInterface callbacks {.MessageCallback = log};
         auto                              desc = requested;
@@ -282,7 +308,7 @@ namespace vultra
         std::unique_ptr<Device> device(new Device());
         if (automaticSelection)
         {
-            const auto selected = selectDevice(desc);
+            const auto selected = selectDevice(desc, optionalFeatures);
             if (!selected)
             {
                 return std::unexpected(selected.error());
