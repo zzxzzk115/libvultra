@@ -2,6 +2,17 @@
 
 #include "resources/mesh_vertex.slangh"
 
+// The interpolated vertex of a rasterized surface and the side it is seen from. A fragment stage samples textures
+// with the rasterizer's derivatives and leaves uvDdx and uvDdy zero; another stage, such as a compute pass that
+// resolves a visibility buffer, gives the change of vertex.uv across one pixel in x and y.
+struct VultraSurfaceInput
+{
+    SurfaceVertex vertex;
+    bool          frontFace;
+    float2        uvDdx;
+    float2        uvDdy;
+};
+
 // What a draw of the scene pushes: x the primitive's transform index, y its material number, z the material's type
 // in the program's vultra.materials and w where the material's parameter block starts in materialData, in words.
 struct MaterialDraw
@@ -70,20 +81,53 @@ OpenPbrParameters vultraOpenPbrParameters()
     return result;
 }
 
-// The base color of the bound vultra.openpbr material at `uv`; discards a fragment below its alpha cutoff.
-float4 vultraBaseColor(float2 uv, float4 color)
+// A material texture at the input's uv: with the rasterizer's derivatives in a fragment stage, with the input's
+// gradients in any other. Material types sample their textures through it.
+float4 vultraSampleMaterial(Texture2D<float4> texture, SamplerState sampler, VultraSurfaceInput input)
+{
+    float2 uvDdx = input.uvDdx;
+    float2 uvDdy = input.uvDdy;
+    __stage_switch
+    {
+    case fragment:
+        uvDdx = ddx(input.vertex.uv);
+        uvDdy = ddy(input.vertex.uv);
+    default:
+        break;
+    }
+    return texture.SampleGrad(sampler, input.vertex.uv, uvDdx, uvDdy);
+}
+
+// Discards the fragment; does nothing in another stage, which resolves only what a fragment stage kept. Inlined:
+// WGSL takes `discard` in the fragment entry point's own code only.
+[ForceInline]
+void vultraDiscard()
+{
+    __stage_switch
+    {
+    case fragment:
+        discard;
+    default:
+        break;
+    }
+}
+
+// The base color of the bound vultra.openpbr material; discards a fragment below its alpha cutoff.
+float4 vultraBaseColor(VultraSurfaceInput input)
 {
     const OpenPbrParameters parameters = vultraOpenPbrParameters();
-    float4 result = baseColorTexture.Sample(baseColorSampler, uv) * parameters.baseColor * color;
+    float4 result = vultraSampleMaterial(baseColorTexture, baseColorSampler, input) * parameters.baseColor *
+                    input.vertex.color;
     if (result.a < parameters.flags.x)
     {
-        discard;
+        vultraDiscard();
     }
     return result;
 }
 
-float3 surfaceNormal(SurfaceVertex input)
+float3 surfaceNormal(VultraSurfaceInput surfaceInput)
 {
+    const SurfaceVertex input = surfaceInput.vertex;
     const OpenPbrParameters parameters = vultraOpenPbrParameters();
     float3                  normal     = normalize(input.normal);
     if (parameters.flags.w < 0.5)
@@ -98,7 +142,7 @@ float3 surfaceNormal(SurfaceVertex input)
     }
     tangent *= rsqrt(tangentLength);
     float3 bitangent = input.tangent.w * cross(normal, tangent);
-    float3 mapped    = normalTexture.Sample(normalSampler, input.uv).xyz * 2 - 1;
+    float3 mapped    = vultraSampleMaterial(normalTexture, normalSampler, surfaceInput).xyz * 2 - 1;
     if (parameters.flags.w > 1.5)
     {
         mapped.z = sqrt(saturate(1 - dot(mapped.xy, mapped.xy))); // BC5 stores only X and Y.

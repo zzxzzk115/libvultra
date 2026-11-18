@@ -54,21 +54,15 @@ float3 vultraEnvironmentLight(VultraSurface     surface,
                        maxMip);
 }
 
-// The interpolated vertex of a rasterized surface and the side it is seen from.
-struct VultraSurfaceInput
-{
-    SurfaceVertex vertex;
-    bool          frontFace;
-};
-
 // A material type. A type is a struct with a member `parameters` whose fields are the type's parameters, as its
 // registration lists them; the program's vultra.materials fills them from the material's parameter block.
 // surface() runs where the scene is rasterized with the bound material's textures (set 1); shade() runs wherever a
 // surface is lit, also in a pass that only reads the G-buffer, so it reads nothing but its parameters and arguments.
 interface IVultraMaterial
 {
-    // The surface at a rasterized point: what the required G-buffer layers hold. A type that cuts out
-    // fragments discards them here.
+    // The surface at a rasterized point: what the required G-buffer layers hold. Sample textures with
+    // vultraSampleMaterial(), which also works where there are no derivatives. A type that cuts out fragments
+    // calls vultraDiscard() here.
     VultraSurface surface(VultraSurfaceInput input);
 
     // Radiance reflected towards `toView` per unit radiance arriving from `toLight` (unit directions from the
@@ -82,8 +76,8 @@ struct VultraOpenPbr : IVultraMaterial
 {
     VultraSurface surface(VultraSurfaceInput input)
     {
-        const float3 baseColor = vultraBaseColor(input.vertex.uv, input.vertex.color).rgb;
-        return vultraSampleSurface(input.vertex, input.frontFace, baseColor);
+        const float3 baseColor = vultraBaseColor(input).rgb;
+        return vultraSampleSurface(input, baseColor);
     }
 
     float3 shade(VultraSurface surface, float3 toLight, float3 toView)
