@@ -164,16 +164,19 @@ namespace vultra
                 }
                 options.profile = profile;
                 Logger::core().info("Cooking built-in shader {} ({})", source.filename().string(), profile);
-                auto program = ShaderProgram::compile(source, options);
-                if (!program)
+                auto variants = ShaderProgram::compileVariants(source, options);
+                if (!variants)
                 {
-                    return std::unexpected(program.error());
+                    return std::unexpected(variants.error());
                 }
-                if (!program->diagnostics.empty())
+                for (auto& variant : *variants)
                 {
-                    Logger::core().warn("{}", program->diagnostics);
+                    if (!variant.diagnostics.empty())
+                    {
+                        Logger::core().warn("{}", variant.diagnostics);
+                    }
+                    programs.push_back(std::move(variant));
                 }
-                programs.push_back(std::move(*program));
             }
             if (programs.empty())
             {

@@ -61,11 +61,14 @@ namespace vultra
         // The program create(device, file, entries, ...) builds from, without a watcher: the .slang source compiled
         // for the device, or its cooked .vshaderc sibling's target for the device when the source is absent. For a
         // caller that lays its pipeline out from reflection (shaderSetLayout) before building it from the program.
+        // `keywords` selects the variant (ShaderCompileOptions::keywords): compiled with its macros from source, or
+        // the cooked one.
         [[nodiscard]] static std::expected<ShaderProgram, Error>
         loadProgram(Device&                            device,
                     const std::filesystem::path&       file,
                     std::vector<ShaderEntry>           entries,
-                    std::vector<std::filesystem::path> includeDirectories = {});
+                    std::vector<std::filesystem::path> includeDirectories = {},
+                    std::vector<ShaderDefine>          keywords           = {});
         // The same for Slang source text that a program carries, such as a native pass of a package; `file` names it
         // in diagnostics and resolves its imports.
         [[nodiscard]] static std::expected<ShaderProgram, Error>
@@ -73,7 +76,8 @@ namespace vultra
                     const std::filesystem::path&       file,
                     std::string_view                   text,
                     std::vector<ShaderEntry>           entries,
-                    std::vector<std::filesystem::path> includeDirectories = {});
+                    std::vector<std::filesystem::path> includeDirectories = {},
+                    std::vector<ShaderDefine>          keywords           = {});
         ~ShaderPipeline();
         ShaderPipeline(const ShaderPipeline&)            = delete;
         ShaderPipeline& operator=(const ShaderPipeline&) = delete;

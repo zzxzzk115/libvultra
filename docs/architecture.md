@@ -93,6 +93,16 @@ own, so the compiler links SPIRV-Tools directly. The builtin shader pack is cook
 `ShaderCompileOptions::entries` may name an entry point that a module in `linkSources` or `linkModules` defines
 instead of the file; hosts use this to add a vertex shader of their own to a file that has only fragment stages.
 
+A program may declare **keywords**, compile-time choices: `import vultra.keywords;` and
+`[VultraKeyword("NAME", "bool")]` or `[VultraKeyword("NAME", "enum:a,b,c")]` on a function named `vultraKeywords`.
+The code tests them with `#if NAME` or `#if NAME == i`, i the index of a value, and the macros reach the modules the
+program imports. A keyword's first value leaves its macro undefined, so the default variant is the plain compile.
+`ShaderCompileOptions::keywords` selects values; the macros are part of the cache key. Cooking
+(`ShaderProgram::cook`, the builtin pack, a host's packed package shaders) compiles every combination into the same
+`.vshaderc`, and `ShaderProgram::load` and `ShaderPipeline::loadProgram` take the values to choose one; a keyword the
+program does not declare, or a value it does not list, is an error naming the choices. A program has at most 64
+combinations.
+
 User attributes are how a host attaches meaning to shader declarations, for example to describe a render pass
 inside its shader:
 

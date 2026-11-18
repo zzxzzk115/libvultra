@@ -198,6 +198,109 @@ namespace vultra::detail
         }
     } // namespace
 
+    std::expected<std::vector<ShaderKeyword>, Error> shaderKeywords(std::span<const ShaderAttribute> attributes)
+    {
+        std::vector<ShaderKeyword> keywords;
+        for (const auto& attribute : attributes)
+        {
+            if (attribute.name != "VultraKeyword")
+            {
+                continue;
+            }
+            const auto& arguments = attribute.arguments;
+            if (arguments.size() != 2 || arguments[0].kind != ShaderAttributeArgument::Kind::eString ||
+                arguments[1].kind != ShaderAttributeArgument::Kind::eString || arguments[0].text.empty())
+            {
+                return makeError("[VultraKeyword] takes a name and a type, \"bool\" or \"enum:a,b,...\"");
+            }
+            ShaderKeyword keyword {arguments[0].text, {}};
+            const auto&   type = arguments[1].text;
+            if (type == "bool")
+            {
+                keyword.values = {"0", "1"};
+            }
+            else if (type.starts_with("enum:"))
+            {
+                std::string_view rest = std::string_view(type).substr(5);
+                while (true)
+                {
+                    const auto comma = rest.find(',');
+                    keyword.values.emplace_back(rest.substr(0, comma));
+                    if (comma == std::string_view::npos)
+                    {
+                        break;
+                    }
+                    rest.remove_prefix(comma + 1);
+                }
+            }
+            const auto names = std::set<std::string>(keyword.values.begin(), keyword.values.end());
+            if (keyword.values.size() < 2 || names.size() != keyword.values.size() || names.contains(""))
+            {
+                return makeError("Keyword {} has type {}: use \"bool\" or \"enum:\" and two or more distinct names",
+                                 keyword.name,
+                                 type);
+            }
+            if (std::ranges::find(keywords, keyword.name, &ShaderKeyword::name) != keywords.end())
+            {
+                return makeError("Keyword {} is declared twice", keyword.name);
+            }
+            keywords.push_back(std::move(keyword));
+        }
+        return keywords;
+    }
+
+    std::expected<std::vector<ShaderDefine>, Error> keywordValues(std::span<const ShaderKeyword> keywords,
+                                                                  std::span<const ShaderDefine>  selection)
+    {
+        for (const auto& chosen : selection)
+        {
+            const auto keyword = std::ranges::find(keywords, chosen.name, &ShaderKeyword::name);
+            if (keyword == keywords.end())
+            {
+                std::string names;
+                for (const auto& each : keywords)
+                {
+                    names += (names.empty() ? "" : ", ") + each.name;
+                }
+                return makeError("The shader declares no keyword {}; it declares {}",
+                                 chosen.name,
+                                 names.empty() ? std::string("none") : names);
+            }
+            if (std::ranges::find(keyword->values, chosen.value) == keyword->values.end())
+            {
+                std::string values;
+                for (const auto& each : keyword->values)
+                {
+                    values += (values.empty() ? "" : ", ") + each;
+                }
+                return makeError("Keyword {} has no value {}; it takes {}", chosen.name, chosen.value, values);
+            }
+        }
+        std::vector<ShaderDefine> values;
+        for (const auto& keyword : keywords)
+        {
+            const auto chosen = std::ranges::find(selection, keyword.name, &ShaderDefine::name);
+            values.push_back({keyword.name, chosen == selection.end() ? keyword.values.front() : chosen->value});
+        }
+        return values;
+    }
+
+    std::vector<ShaderDefine> keywordDefines(std::span<const ShaderKeyword> keywords,
+                                             std::span<const ShaderDefine>  values)
+    {
+        std::vector<ShaderDefine> defines;
+        for (size_t index = 0; index < keywords.size() && index < values.size(); ++index)
+        {
+            const auto& choices  = keywords[index].values;
+            const auto  position = size_t(std::ranges::find(choices, values[index].value) - choices.begin());
+            if (position != 0 && position < choices.size())
+            {
+                defines.push_back({keywords[index].name, std::to_string(position)});
+            }
+        }
+        return defines;
+    }
+
     Json encodeShaderProgram(const ShaderProgram& program)
     {
         Json document {{"target", program.profile},
@@ -206,7 +309,17 @@ namespace vultra::detail
                        {"ray_query", program.rayQuery},
                        {"entries", Json::array()},
                        {"parameters", encodeParameter(program.parameters)},
+                       {"keywords", Json::array()},
+                       {"keyword_values", Json::array()},
                        {"dependencies", Json::array()}};
+        for (const auto& keyword : program.keywords)
+        {
+            document["keywords"].push_back({{"name", keyword.name}, {"values", keyword.values}});
+        }
+        for (const auto& value : program.keywordValues)
+        {
+            document["keyword_values"].push_back({value.name, value.value});
+        }
         for (const auto& shader : program.shaders)
         {
             const auto           bytes = program.profile == "wgsl" ?
@@ -299,6 +412,27 @@ namespace vultra::detail
                 return std::unexpected(parameters.error());
             }
             program.parameters = std::move(*parameters);
+            if (!document.at("keywords").is_array() || document.at("keywords").size() > 16 ||
+                !document.at("keyword_values").is_array() ||
+                document.at("keyword_values").size() != document.at("keywords").size())
+            {
+                return makeError("Invalid cooked shader keywords");
+            }
+            for (const auto& keyword : document.at("keywords"))
+            {
+                program.keywords.push_back(
+                    {keyword.at("name").get<std::string>(), keyword.at("values").get<std::vector<std::string>>()});
+            }
+            for (const auto& value : document.at("keyword_values"))
+            {
+                const auto pair = value.get<std::array<std::string, 2>>();
+                program.keywordValues.push_back({pair[0], pair[1]});
+            }
+            if (const auto values = keywordValues(program.keywords, program.keywordValues);
+                !values || values->size() != program.keywordValues.size())
+            {
+                return makeError("Invalid cooked shader keyword values");
+            }
             if (!document.at("dependencies").is_array() || document.at("dependencies").size() > 10000)
             {
                 return makeError("Invalid cooked shader dependencies");

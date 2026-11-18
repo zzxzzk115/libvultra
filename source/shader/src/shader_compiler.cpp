@@ -220,9 +220,100 @@ namespace vultra
         return compileSource(file, *text, options);
     }
 
-    std::expected<ShaderProgram, Error> ShaderCompiler::compileSource(const std::filesystem::path& sourcePath,
-                                                                      std::string_view             sourceText,
-                                                                      const ShaderCompileOptions&  compileOptions)
+    std::expected<ShaderProgram, Error> ShaderCompiler::compileSource(const std::filesystem::path& file,
+                                                                      std::string_view             text,
+                                                                      const ShaderCompileOptions&  options)
+    {
+        // The default variant compiles without keyword macros and tells which keywords the source declares.
+        auto plain     = options;
+        plain.keywords = {};
+        auto program   = compileVariant(file, text, plain);
+        if (!program || options.keywords.empty())
+        {
+            return program;
+        }
+        auto values = detail::keywordValues(program->keywords, options.keywords);
+        if (!values)
+        {
+            return makeError("{}: {}", file.string(), values.error().message);
+        }
+        const auto defines = detail::keywordDefines(program->keywords, *values);
+        if (defines.empty())
+        {
+            return program;
+        }
+        auto variant = plain;
+        variant.defines.insert(variant.defines.end(), defines.begin(), defines.end());
+        auto result = compileVariant(file, text, variant);
+        if (!result)
+        {
+            return result;
+        }
+        result->keywordValues = std::move(*values);
+        return result;
+    }
+
+    std::expected<std::vector<ShaderProgram>, Error>
+    ShaderCompiler::compileVariants(const std::filesystem::path& file, const ShaderCompileOptions& options)
+    {
+        std::ifstream input(file, std::ios::binary);
+        if (!input)
+        {
+            return makeError("Open Slang source: {}", file.string());
+        }
+        const std::string text {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+        return compileVariants(file, text, options);
+    }
+
+    std::expected<std::vector<ShaderProgram>, Error>
+    ShaderCompiler::compileVariants(const std::filesystem::path& file,
+                                    std::string_view             text,
+                                    const ShaderCompileOptions&  options)
+    {
+        auto plain     = options;
+        plain.keywords = {};
+        auto first     = compileVariant(file, text, plain);
+        if (!first)
+        {
+            return std::unexpected(first.error());
+        }
+        const auto keywords = first->keywords;
+        size_t     count    = 1;
+        for (const auto& keyword : keywords)
+        {
+            count *= keyword.values.size();
+            if (count > 64)
+            {
+                return makeError("{} declares more than 64 combinations of keyword values", file.string());
+            }
+        }
+        std::vector<ShaderProgram> variants;
+        variants.push_back(std::move(*first));
+        // Combination `index` takes value (index / product of the counts before it) % count of each keyword.
+        for (size_t index = 1; index < count; ++index)
+        {
+            std::vector<ShaderDefine> selection;
+            size_t                    rest = index;
+            for (const auto& keyword : keywords)
+            {
+                selection.push_back({keyword.name, keyword.values[rest % keyword.values.size()]});
+                rest /= keyword.values.size();
+            }
+            auto variant     = plain;
+            variant.keywords = std::move(selection);
+            auto program     = compileSource(file, text, variant);
+            if (!program)
+            {
+                return std::unexpected(program.error());
+            }
+            variants.push_back(std::move(*program));
+        }
+        return variants;
+    }
+
+    std::expected<ShaderProgram, Error> ShaderCompiler::compileVariant(const std::filesystem::path& sourcePath,
+                                                                       std::string_view             sourceText,
+                                                                       const ShaderCompileOptions&  compileOptions)
     {
         using Slang::ComPtr;
         const auto started               = Clock::now();
@@ -766,7 +857,23 @@ namespace vultra
                 return std::unexpected(marked.error());
             }
         }
-        program.parameters             = std::move(*parameters);
+        program.parameters = std::move(*parameters);
+        // Keywords are declared on the function vultraKeywords, which no entry point needs to call.
+        auto declared = detail::reflectShaderAttributes(layout->findFunctionByName("vultraKeywords"));
+        if (!declared)
+        {
+            return std::unexpected(declared.error());
+        }
+        auto keywords = detail::shaderKeywords(*declared);
+        if (!keywords)
+        {
+            return makeError("{}: {}", source.string(), keywords.error().message);
+        }
+        program.keywords = std::move(*keywords);
+        for (const auto& keyword : program.keywords)
+        {
+            program.keywordValues.push_back({keyword.name, keyword.values.front()});
+        }
         statistics.codegenMilliseconds = milliseconds(codegenStarted);
         program.dependencies           = fileSystem->dependencies();
         for (const auto& dependency : moduleDependencies)

@@ -139,16 +139,29 @@ namespace vultra
         std::string value;
     };
 
+    // A compile-time choice a program declares with [VultraKeyword("NAME", "bool")] or
+    // [VultraKeyword("NAME", "enum:a,b,c")] on its function vultraKeywords (`import vultra.keywords;`). A bool takes
+    // "0" or "1", an enum one of its names. The code tests it with `#if NAME` or `#if NAME == i`, i the value's index;
+    // the first value is NAME left undefined, so it compiles as 0. Cooking compiles every combination of values.
+    struct ShaderKeyword
+    {
+        std::string              name;
+        std::vector<std::string> values; // The first is the default.
+    };
+
     struct ShaderCompileOptions
     {
         std::vector<ShaderEntry>           entries;
         std::vector<std::filesystem::path> includeDirectories;
         std::vector<std::filesystem::path> linkModules;
         std::vector<ShaderDefine>          defines;
-        std::vector<ShaderDefine>          linkSources;            // Module name and ordinary Slang source text.
-        std::string                        profile  = "spirv_1_5"; // SPIR-V profile or "wgsl".
-        bool                               rayQuery = false;
-        std::vector<std::string>           capabilities;
+        std::vector<ShaderDefine>          linkSources; // Module name and ordinary Slang source text.
+        // Values of the program's keywords, {name, value}; one left out takes its first value. A name the program does
+        // not declare, or a value it does not list, is an error naming the choices.
+        std::vector<ShaderDefine> keywords;
+        std::string               profile  = "spirv_1_5"; // SPIR-V profile or "wgsl".
+        bool                      rayQuery = false;
+        std::vector<std::string>  capabilities;
         // Both are independent of the C++ build mode and of each other.
         // Embeds source text and line information in the SPIR-V so a GPU debugger can show the shader.
         bool debugInfo = false;
@@ -227,6 +240,8 @@ namespace vultra
         std::vector<ShaderDependency> dependencies;
         std::string                   compileKey;
         std::vector<std::string>      capabilities;
+        std::vector<ShaderKeyword>    keywords;      // What the source declares.
+        std::vector<ShaderDefine>     keywordValues; // This variant's: one per keyword, in declaration order.
 
 #ifdef VULTRA_WITH_SHADER_COMPILER
         // Empty entries discovers all annotated shader entries.
@@ -241,25 +256,32 @@ namespace vultra
         compileSource(const std::filesystem::path& sourcePath,
                       std::string_view             source,
                       const ShaderCompileOptions&  options = {});
-        // Compiles `source` for every profile (options.profile when none is given) into one archive. Returns false
-        // when the existing output is current.
+        // Every variant of the source for options.profile, one per combination of its keywords' values, the default
+        // first; options.keywords is ignored.
+        [[nodiscard]] static std::expected<std::vector<ShaderProgram>, Error>
+        compileVariants(const std::filesystem::path& file, const ShaderCompileOptions& options = {});
+        // Compiles every variant of `source` for every profile (options.profile when none is given) into one
+        // archive. Returns false when the existing output is current.
         [[nodiscard]] static std::expected<bool, Error> cook(const std::filesystem::path& source,
                                                              const std::filesystem::path& output,
                                                              const ShaderCompileOptions&  options  = {},
                                                              std::span<const std::string> profiles = {});
         static std::string                              compilerVersion();
 #endif
-        // A cooked .vshaderc holds one program per target (profile), all compiled from one source.
+        // A cooked .vshaderc holds one program per target (profile) and keyword values, all compiled from one source.
         [[nodiscard]] static std::expected<std::vector<ShaderProgram>, Error>
         loadTargets(const std::filesystem::path& file);
         [[nodiscard]] static std::expected<std::vector<ShaderProgram>, Error>
         loadTargets(std::span<const std::byte> bytes, const std::filesystem::path& identity);
-        // The program for `profile`; an archive without it is an error naming the targets it holds.
-        [[nodiscard]] static std::expected<ShaderProgram, Error> load(const std::filesystem::path& file,
-                                                                      std::string_view             profile);
+        // The program for `profile` and `keywords` (ShaderCompileOptions::keywords); an archive without it is an error
+        // naming the targets it holds, and an unknown keyword or value one naming the choices.
         [[nodiscard]] static std::expected<ShaderProgram, Error>
-        load(std::span<const std::byte> bytes, const std::filesystem::path& identity, std::string_view profile);
-        // The program of an archive with one target.
+        load(const std::filesystem::path& file, std::string_view profile, std::span<const ShaderDefine> keywords = {});
+        [[nodiscard]] static std::expected<ShaderProgram, Error> load(std::span<const std::byte>    bytes,
+                                                                      const std::filesystem::path&  identity,
+                                                                      std::string_view              profile,
+                                                                      std::span<const ShaderDefine> keywords = {});
+        // The program of an archive with one target and no keywords.
         [[nodiscard]] static std::expected<ShaderProgram, Error> load(const std::filesystem::path& file);
         [[nodiscard]] static std::expected<ShaderProgram, Error> load(std::span<const std::byte>   bytes,
                                                                       const std::filesystem::path& identity);
