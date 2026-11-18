@@ -49,6 +49,9 @@ namespace vultra
                   std::span<VriPipeline* const, 4> pipelines,
                   VriDescriptorSet*                set0) const;
 
+        // The set of material `material`, for a stage that binds it itself, such as a compute pass.
+        VriDescriptorSet* set(uint32_t material) const;
+
     private:
         SceneMaterials(Device& device, VriPipelineLayout* layout, GpuScene& scene);
 

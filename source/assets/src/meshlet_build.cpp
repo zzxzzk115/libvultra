@@ -13,6 +13,11 @@ namespace vultra
 {
     static_assert(sizeof(Meshlet) == 32);
 
+    uint32_t meshletBound(uint32_t indexCount)
+    {
+        return uint32_t(meshopt_buildMeshletsBound(indexCount, kMeshletVertices, kMeshletTriangles));
+    }
+
     std::expected<MeshletData, Error> buildMeshlets(const SceneData& scene, uint32_t workers)
     {
         if (scene.primitives.empty())
@@ -82,8 +87,7 @@ namespace vultra
                 {
                     index -= baseVertex;
                 }
-                const auto bound =
-                    meshopt_buildMeshletsBound(primitive.indexCount, kMeshletVertices, kMeshletTriangles);
+                const auto bound = meshletBound(primitive.indexCount);
                 job.meshlets.resize(bound);
                 job.vertices.resize(bound * kMeshletVertices);
                 job.triangles.resize(bound * kMeshletTriangles * 3);
@@ -129,11 +133,11 @@ namespace vultra
                 const auto* vertices  = job.vertices.data() + meshlet.vertex_offset;
                 const auto* triangles = job.triangles.data() + meshlet.triangle_offset;
                 const auto  bounds    = meshopt_computeMeshletBounds(vertices,
-                                                                     triangles,
-                                                                     meshlet.triangle_count,
-                                                                     positions,
-                                                                     scene.vertices.size(),
-                                                                     sizeof(SceneVertex));
+                                                                 triangles,
+                                                                 meshlet.triangle_count,
+                                                                 positions,
+                                                                 scene.vertices.size(),
+                                                                 sizeof(SceneVertex));
                 result.meshlets.push_back({{uint32_t(result.vertices.size()),
                                             uint32_t(result.triangles.size()),
                                             meshlet.vertex_count,

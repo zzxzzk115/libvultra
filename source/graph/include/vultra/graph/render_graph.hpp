@@ -33,7 +33,9 @@ namespace vultra
         eVertexBuffer,
         eIndexBuffer,
         // A constant buffer a shader reads.
-        eConstantBuffer
+        eConstantBuffer,
+        // Arguments an indirect draw or dispatch reads.
+        eIndirectBuffer
     };
 
     const char* usageName(Usage usage);

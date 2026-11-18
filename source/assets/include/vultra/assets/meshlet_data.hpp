@@ -39,6 +39,8 @@ namespace vultra
 
 #ifdef VULTRA_WITH_MESHLET_BUILD
     [[nodiscard]] std::expected<MeshletData, Error> buildMeshlets(const SceneData& scene, uint32_t workers = 0);
+    // The most meshlets buildMeshlets() makes of a primitive of `indexCount` indices (meshoptimizer's bound).
+    uint32_t meshletBound(uint32_t indexCount);
 #endif
 
 } // namespace vultra

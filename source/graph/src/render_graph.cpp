@@ -113,6 +113,12 @@ namespace vultra
                         return VriBufferUsage_ConstantBuffer;
                     }
                     break;
+                case Usage::eIndirectBuffer:
+                    if (!texture)
+                    {
+                        return VriBufferUsage_IndirectBuffer;
+                    }
+                    break;
             }
             return makeError("Unsupported graph usage for this resource type");
         }
@@ -175,6 +181,8 @@ namespace vultra
                     return {VriAccess_IndexBufferRead, VriLayout_Undefined, VriPipelineStage_VertexInput};
                 case Usage::eConstantBuffer:
                     return {VriAccess_ConstantBufferRead, VriLayout_Undefined, VriPipelineStage_AllCommands};
+                case Usage::eIndirectBuffer:
+                    return {VriAccess_IndirectBufferRead, VriLayout_Undefined, VriPipelineStage_DrawIndirect};
             }
             panic("Unknown graph usage");
         }
@@ -275,6 +283,8 @@ namespace vultra
                 return "index buffer";
             case Usage::eConstantBuffer:
                 return "constant buffer";
+            case Usage::eIndirectBuffer:
+                return "indirect buffer";
         }
         panic("Unknown graph usage");
     }

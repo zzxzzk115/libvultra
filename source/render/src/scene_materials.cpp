@@ -84,6 +84,11 @@ namespace vultra
         return kRanges;
     }
 
+    VriDescriptorSet* SceneMaterials::set(uint32_t material) const
+    {
+        return m_Sets[material];
+    }
+
     VriPushConstantDesc SceneMaterials::constants()
     {
         // Register b2: on D3D12 the frame set's constant buffers take b0 and b1 in the same space.
