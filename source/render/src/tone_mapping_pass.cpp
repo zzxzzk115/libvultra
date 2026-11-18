@@ -298,9 +298,9 @@ namespace vultra
                  {{std::string(kSceneOutput)}},
                  {{std::string(kFinal), VriFormat_Unknown, "color.display"}},
                  toneMappingDefinition().parameters},
-                [](Device&, const AssetSource* shaders) -> std::expected<std::unique_ptr<RenderStage>, Error>
+                [](Device&, const StageSources& sources) -> std::expected<std::unique_ptr<RenderStage>, Error>
                 {
-                    return std::make_unique<ToneMappingStage>(shaders);
+                    return std::make_unique<ToneMappingStage>(sources.shaders);
                 }};
     }
 } // namespace vultra

@@ -70,15 +70,18 @@ namespace vultra
                bool           validation       = true,
                const void*    nativeCreateInfo = nullptr,
                uint64_t       features         = 0,
-               bool           bestEffort       = false);
+               bool           bestEffort       = false,
+               uint64_t       optionalFeatures = 0);
         // Tries `apis` in order until one creates a device, logging each failure; the error names every attempt.
-        // An empty list is automatic selection, as create() without an API.
+        // An empty list is automatic selection, as create() without an API. `optionalFeatures` are requested as
+        // well and enabled where granted; unlike `features`, a GPU may lack them.
         [[nodiscard]] static std::expected<std::unique_ptr<Device>, Error>
         create(std::span<const VriGraphicsAPI> apis,
                bool                            validation       = true,
                const void*                     nativeCreateInfo = nullptr,
                uint64_t                        features         = 0,
-               bool                            bestEffort       = false);
+               bool                            bestEffort       = false,
+               uint64_t                        optionalFeatures = 0);
         // The graphics APIs this build contains (libvultra_graphics_apis), in the order automatic selection tries
         // them: Vulkan first where it exists, Metal first on macOS, WebGPU on the Web.
         static std::span<const VriGraphicsAPI> graphicsAPIs();
@@ -104,11 +107,11 @@ namespace vultra
 
     private:
         Device() = default;
-        static std::expected<std::unique_ptr<Device>, Error> create(const VriDeviceCreationDesc& requested,
-                                                                    bool                         automaticSelection);
-        std::expected<void, Error>                           initialize();
-        VriPipelineCacheInterface                            m_PipelineCacheApi {};
-        DeviceFeatures                                       m_Features;
+        static std::expected<std::unique_ptr<Device>, Error>
+        create(const VriDeviceCreationDesc& requested, bool automaticSelection, uint64_t optionalFeatures);
+        std::expected<void, Error> initialize();
+        VriPipelineCacheInterface  m_PipelineCacheApi {};
+        DeviceFeatures             m_Features;
     };
 
     enum class FrameQueue

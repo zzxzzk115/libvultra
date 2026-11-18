@@ -7,6 +7,7 @@
 #include <vultra/render/render_light.hpp>
 
 #include <expected>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -201,6 +202,10 @@ namespace vultra
         // A view stage: the auxiliary views it renders for each of the path's views. The stages in their slots may
         // not ask for views of their own.
         std::vector<AuxiliaryViewDesc> auxiliaryViews;
+        // VRI feature bits (VriFeature_*) the stage uses when the device has them and does without otherwise, such as
+        // mesh shading; a host requests them, best effort, when it creates the device for a path with the stage. The
+        // stage tells which way it took.
+        uint64_t optionalFeatures = 0;
         // A geometry stage: the geometry processor whose buffers it reads, run on every model when it is imported.
         // The caller resolves the name; the kernel keeps no registry of processors.
         std::string geometryProcessor;
@@ -300,8 +305,18 @@ namespace vultra
     };
 
     // `shaders` is the cooked builtin shader source, or null to compile builtin shaders from source.
+    // What a stage factory compiles its shaders with. A view, valid only during the factory call: a stage copies the
+    // paths it keeps, for a reload say.
+    struct StageSources
+    {
+        const AssetSource* shaders = nullptr; // Cooked builtin shaders; null compiles them from the working directory.
+        // Where its shaders' imports are found: a host's project shaders first (its generated vultra.materials),
+        // then the builtin shaders' roots. Empty for the builtin roots alone.
+        std::span<const std::filesystem::path> includeDirectories;
+    };
+
     using CreateStage =
-        std::function<std::expected<std::unique_ptr<RenderStage>, Error>(Device& device, const AssetSource* shaders)>;
+        std::function<std::expected<std::unique_ptr<RenderStage>, Error>(Device& device, const StageSources& sources)>;
 
     struct StageType
     {
@@ -366,11 +381,10 @@ namespace vultra
     public:
         // Creates the stages the path names, picked from `stages` by name. An invalid path is an error with
         // the first problem validateRenderPath() finds. Graph passes keep the stages' addresses.
-        [[nodiscard]] static std::expected<std::unique_ptr<RenderPath>, Error>
-        create(Device&                    device,
-               RenderPathDesc             desc,
-               std::span<const StageType> stages,
-               const AssetSource*         shaders = nullptr);
+        [[nodiscard]] static std::expected<std::unique_ptr<RenderPath>, Error> create(Device&                    device,
+                                                                                      RenderPathDesc             desc,
+                                                                                      std::span<const StageType> stages,
+                                                                                      const StageSources& sources = {});
         RenderPath(const RenderPath&)            = delete;
         RenderPath& operator=(const RenderPath&) = delete;
 

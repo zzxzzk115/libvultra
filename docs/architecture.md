@@ -156,7 +156,12 @@ graph resources. It is an ordered list of **slots**, each filled by a **stage**:
 - `RenderStage` is the stage itself: `addPasses()` appends its passes for one view (or the frame) and returns
   exactly the resources it declares; `prepare()` updates per-frame data from the cameras and lights.
 - `RenderPath` is a concrete class created from a `RenderPathDesc` (name and slots) and a list of `StageType`
-  (description and factory). There is no global registry: the caller passes the stages it knows.
+  (description and factory). There is no global registry: the caller passes the stages it knows. A factory
+  receives the device and `StageSources`: the cooked builtin shaders and the include directories its shaders
+  compile with, a view valid only during the call.
+- `StageDesc::optionalFeatures` lists VRI features a stage uses where the GPU has them, such as mesh shading; a
+  host requests them with `Device::create(..., optionalFeatures)` (or `AppConfig::optionalFeatures`), which
+  enables those granted, and the stage reads `Device::features()` at creation and logs which way it renders.
   `addPasses()` takes a list of views and returns each view's resources; with several views, view resources
   are named `<view>:<resource>` in the graph and frame resources exist once.
 - A view stage can render **auxiliary views**, such as a shadow map's light view: `StageDesc::auxiliaryViews`

@@ -55,7 +55,12 @@ namespace vultra
     {
         Services services;
         services.m_Canvas = std::make_unique<const std::string>(launch.canvas);
-        auto device       = Device::create(config.graphicsAPIs, config.validation, nullptr, config.features);
+        auto device       = Device::create(config.graphicsAPIs,
+                                     config.validation,
+                                     nullptr,
+                                     config.features,
+                                     false,
+                                     config.optionalFeatures);
         if (!device)
         {
             return std::unexpected(device.error());

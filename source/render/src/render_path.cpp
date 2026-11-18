@@ -423,7 +423,7 @@ namespace vultra
     std::expected<std::unique_ptr<RenderPath>, Error> RenderPath::create(Device&                    device,
                                                                          RenderPathDesc             desc,
                                                                          std::span<const StageType> stages,
-                                                                         const AssetSource*         shaders)
+                                                                         const StageSources&        sources)
     {
         std::vector<StageDesc> descs;
         for (const auto& type : stages)
@@ -461,7 +461,7 @@ namespace vultra
             {
                 return makeError("Stage {} has no factory", type.desc.name);
             }
-            auto stage = type.create(device, shaders);
+            auto stage = type.create(device, sources);
             if (!stage)
             {
                 return makeError("Create stage {}: {}", type.desc.name, stage.error().message);

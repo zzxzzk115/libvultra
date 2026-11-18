@@ -623,7 +623,7 @@ namespace
         {
             return StageType {
                 UpscaleStage::desc(std::move(name), jitter),
-                [&seen](Device& created, const AssetSource*) -> std::expected<std::unique_ptr<RenderStage>, Error>
+                [&seen](Device& created, const StageSources&) -> std::expected<std::unique_ptr<RenderStage>, Error>
                 {
                     return std::make_unique<UpscaleStage>(created, seen);
                 }};
@@ -1131,7 +1131,7 @@ namespace
                  {{std::string(kSceneVertices)}, {std::string(kSceneIndices)}, {"test.background", true}},
                  {{std::string(kSceneHdr), VriFormat_RGBA16_SFLOAT, "color.linear.hdr"},
                   {std::string(kSceneDepth), VriFormat_D32_SFLOAT, "depth"}}},
-                [directory](Device& device, const AssetSource*) -> std::expected<std::unique_ptr<RenderStage>, Error>
+                [directory](Device& device, const StageSources&) -> std::expected<std::unique_ptr<RenderStage>, Error>
                 {
                     return std::make_unique<NormalStage>(device, directory);
                 }};
@@ -1370,7 +1370,7 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
                      StageScope::eFrame,
                      {},
                      {{"test.background", VriFormat_RGBA16_SFLOAT, "color.linear.hdr"}}},
-                    [](Device& device, const AssetSource*) -> std::expected<std::unique_ptr<RenderStage>, Error>
+                    [](Device& device, const StageSources&) -> std::expected<std::unique_ptr<RenderStage>, Error>
                     {
                         return std::make_unique<BackgroundStage>(device);
                     }};
@@ -1542,7 +1542,7 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
         };
 
         auto incomplete   = NormalStage::type(directory);
-        incomplete.create = [](Device&, const AssetSource*) -> std::expected<std::unique_ptr<RenderStage>, Error>
+        incomplete.create = [](Device&, const StageSources&) -> std::expected<std::unique_ptr<RenderStage>, Error>
         {
             return std::make_unique<Incomplete>();
         };
@@ -1699,7 +1699,7 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
         static vultra::StageType type(Seen& seen, vultra::RenderCamera camera)
         {
             return {desc(),
-                    [&seen, camera](vultra::Device&, const vultra::AssetSource*)
+                    [&seen, camera](vultra::Device&, const vultra::StageSources&)
                         -> std::expected<std::unique_ptr<vultra::RenderStage>, vultra::Error>
                     {
                         return std::make_unique<ProbeStage>(seen, camera);
