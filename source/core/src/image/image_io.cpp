@@ -169,6 +169,55 @@ namespace vultra
         return {};
     }
 
+    std::expected<Image, Error> loadPfm(const std::filesystem::path& path)
+    {
+        static_assert(sizeof(float) == 4 && std::numeric_limits<float>::is_iec559);
+        std::ifstream input(path, std::ios::binary);
+        if (!input)
+        {
+            return makeError("Cannot open PFM: {}", path.string());
+        }
+        std::string kind;
+        uint64_t    width  = 0;
+        uint64_t    height = 0;
+        double      scale  = 0;
+        input >> kind >> width >> height >> scale;
+        // One whitespace character ends the header.
+        input.get();
+        const uint32_t channels = kind == "PF" ? 3 : (kind == "Pf" ? 1 : 0);
+        if (!input || channels == 0 || width == 0 || height == 0 || width > 65536 || height > 65536 || scale == 0)
+        {
+            return makeError("Not a PFM image: {}", path.string());
+        }
+        // A negative scale marks little-endian floats.
+        const bool         swap = (scale < 0) != (std::endian::native == std::endian::little);
+        std::vector<float> values(width * height * channels);
+        input.read(reinterpret_cast<char*>(values.data()), std::streamsize(values.size() * sizeof(float)));
+        if (!input)
+        {
+            return makeError("PFM data is shorter than its size: {}", path.string());
+        }
+        Image image {{uint32_t(width), uint32_t(height)}, std::vector<float>(width * height * 4, 1.0f)};
+        // PFM stores rows from bottom to top; Image stores them from top to bottom.
+        for (uint64_t y = 0; y < height; ++y)
+        {
+            for (uint64_t x = 0; x < width; ++x)
+            {
+                const auto source = ((height - 1 - y) * width + x) * channels;
+                for (uint32_t channel = 0; channel < 3; ++channel)
+                {
+                    float value = values[source + (channels == 3 ? channel : 0)];
+                    if (swap)
+                    {
+                        value = std::bit_cast<float>(std::byteswap(std::bit_cast<uint32_t>(value)));
+                    }
+                    image.rgba[(y * width + x) * 4 + channel] = value;
+                }
+            }
+        }
+        return image;
+    }
+
     std::expected<void, Error> dumpFrame(const Image& image, const std::filesystem::path& directory, uint64_t frame)
     {
         std::ostringstream name;

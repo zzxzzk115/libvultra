@@ -98,6 +98,32 @@ int main()
     require(bool(pfm) && pfm.peek() == std::char_traits<char>::eof(), "PFM payload size is wrong");
     require(pixels == std::array<float, 12> {4, 5, 6, -7, 8, 9, 3, -0.5f, 0.25f, 0, 1, 2},
             "PFM lost signed HDR values, included alpha or changed row order");
+    pfm.close();
+    // Loading gives back the RGB values in their rows, alpha 1; a big-endian greyscale file fills all three channels.
+    const auto reloaded = must(loadPfm(pfmPath));
+    require(reloaded.size.width == 2 && reloaded.size.height == 2 &&
+                reloaded.rgba == std::vector<float> {3, -0.5f, 0.25f, 1, 0, 1, 2, 1, 4, 5, 6, 1, -7, 8, 9, 1},
+            "loadPfm did not give back what savePfm wrote");
+    {
+        std::ofstream grey(pfmPath, std::ios::binary | std::ios::trunc);
+        grey << "Pf\n2 1\n1.0\n";
+        for (const float value : {0.5f, -2.0f})
+        {
+            auto word = std::bit_cast<uint32_t>(value);
+            if constexpr (std::endian::native == std::endian::little)
+            {
+                word = std::byteswap(word);
+            }
+            grey.write(reinterpret_cast<const char*>(&word), sizeof(word));
+        }
+    }
+    const auto greyscale = must(loadPfm(pfmPath));
+    require(greyscale.rgba == std::vector<float> {0.5f, 0.5f, 0.5f, 1, -2, -2, -2, 1},
+            "A big-endian greyscale PFM did not load into all three channels");
+    {
+        std::ofstream(pfmPath, std::ios::binary | std::ios::trunc) << "PF\n4 4\n-1.0\n";
+    }
+    support::rejects(loadPfm(pfmPath), "A PFM shorter than its size loaded");
     const auto rawPixel = must(imagePixel(hdr, 0, 0));
     require(rawPixel == std::array<float, 4> {3, -0.5f, 0.25f, 0.1f}, "Pixel probe lost signed HDR or alpha");
     const auto mapped = must(mapImage(hdr, {ImageChannel::eGreen, -0.5f, 1.0f}));

@@ -103,9 +103,12 @@ Added:
   cached with the model (`GeometryProcessor`, `ImportedAsset::buffers`, `StageDesc::geometryProcessor`); material
   sampling with explicit gradients (`vultraSampleMaterial`); stage factories receive `StageSources`;
   `StageDesc::optionalFeatures` with optional features in `Device::create` and `AppConfig`; `Usage::eIndirectBuffer`,
-  `meshletBound`, `SceneMaterials::set`. `vultra.meshlets` and `example.visibility_buffer` are in Vultra-Packages;
-  the latter resolves materials with one dispatch per material on every API, a deviation from the owner's card for
-  descriptor arrays recorded in the plans (R42).
+  `meshletBound`, `SceneMaterials::set`. `vultra.meshlets` and `example.visibility_buffer` are in Vultra-Packages.
+- R42 (2026-11-18): shader keywords and cooked variants (`[VultraKeyword]`, `ShaderCompileOptions::keywords`,
+  `compileVariants`); material types sample by slot (`vultraSampleMaterial(slot, input)`); material sets of
+  descriptor arrays (`MaterialBinding::eArrays`, `SceneMaterials::arrayRanges`) for the visibility buffer's
+  single-dispatch resolve on Vulkan and D3D12.
+- M11, in progress: `loadPfm`, for `vultra compare`.
 - Slang user-attribute and field-initializer reflection, stored in cooked programs.
 - A render graph execution plan with batches per queue, async compute through `execute(Frame&)`, and
   `writeDot()`.
