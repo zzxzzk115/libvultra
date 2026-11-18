@@ -80,6 +80,8 @@ namespace vultra
     [[nodiscard]] std::expected<void, Error>  savePng(const Image& image, const std::filesystem::path& path);
     // Lossless float RGB output; PFM has no alpha channel, gamma or tone mapping.
     [[nodiscard]] std::expected<void, Error> savePfm(const Image& image, const std::filesystem::path& path);
+    // A colour ("PF") or greyscale ("Pf") PFM of either byte order, alpha 1; a greyscale value fills R, G and B.
+    [[nodiscard]] std::expected<Image, Error> loadPfm(const std::filesystem::path& path);
     [[nodiscard]] std::expected<void, Error>
     dumpFrame(const Image& image, const std::filesystem::path& directory, uint64_t frame);
     // RGB PSNR; Rec.709-weighted luma SSIM, 11x11 Gaussian sigma=1.5, valid windows.
