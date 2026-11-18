@@ -5,9 +5,23 @@
 #include <vultra/core/base/error.hpp>
 
 #include <expected>
+#include <functional>
+#include <string>
+#include <vector>
 
 namespace vultra
 {
+    // Derives buffers from a model when it is imported. Its output is cached with the model: the cache key includes
+    // its name and version, so a cache hit, as in a packed project, does not run it. Raise the version when the
+    // output changes.
+    struct GeometryProcessor
+    {
+        std::string name;
+        uint32_t    version = 1;
+        std::function<std::expected<std::vector<GeometryBuffer>, Error>(const SceneData& model, uint32_t workers)>
+            process;
+    };
+
     struct AssetImportOptions
     {
         std::filesystem::path cacheDirectory = ".vultra/assets";
@@ -16,6 +30,8 @@ namespace vultra
         uint32_t              workers  = 0; // Maximum import concurrency; zero selects automatically.
         bool                  cache    = true;
         bool                  reimport = false;
+        // Run in this order on the model; their buffers' names must differ.
+        std::vector<GeometryProcessor> processors;
     };
 
     // Source files stay untouched. Changed dependencies/options invalidate the derived cache.

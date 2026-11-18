@@ -4,6 +4,7 @@
 
 #include <vultra/assets/asset_pipeline.hpp>
 #include <vultra/assets/asset_source.hpp>
+#include <vultra/gpu/buffer_upload.hpp>
 #include <vultra/render/environment.hpp>
 #include <vultra/render/rendering_server.hpp>
 #include <vultra/render/scene.hpp>
@@ -2058,7 +2059,7 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
         auto scene = quadScene();
         scene.materials.push_back(scene.materials.front());
         scene.materials.back().emissionColor = {1, 0, 0};
-        const std::array<SceneModel, 1>    models {SceneModel {0, 1, 0, 1}};
+        const std::array<SceneModel, 1>    models {SceneModel {0, 1, 0, 1, 0, 4, 0, 6}};
         const std::array<SceneInstance, 2> instances {SceneInstance {0, 0, 1, 0}, SceneInstance {0, 0, 1, 1}};
         const auto textures = must(prepareTextures(scene, {.compression = TextureCompression::eNone}));
         const auto gpu      = must(GpuScene::create(device, scene, textures, nullptr, models, instances));
@@ -2093,9 +2094,20 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
         require(left.z > 1 && left.x < 0.01f && right.x > 1 && right.z < 0.01f && glm::length(mid) < 0.1f,
                 "The instances are not drawn where their transforms put them, with their own materials");
 
+        // Named buffers: kept under their names, read back as given; names are unique.
+        const std::array<uint32_t, 3> words {7, 8, 9};
+        must(gpu->addBuffer("test.words", sizeof(uint32_t), std::as_bytes(std::span(words))));
+        const auto kept = must(readbackBuffer(device, *must(gpu->buffer("test.words"))));
+        require(kept.size() == sizeof(words) && std::memcmp(kept.data(), words.data(), sizeof(words)) == 0,
+                "A named scene buffer does not hold what it was given");
+        require(!gpu->addBuffer("test.words", 4, std::as_bytes(std::span(words))) &&
+                    !gpu->addBuffer("test.odd", 8, std::as_bytes(std::span(words))) &&
+                    gpu->buffer("test.missing").error().message.find("test.words") != std::string::npos,
+                "A taken name, a partial element, or a missing name must be refused");
+
         const std::array<SceneInstance, 1> badModel {SceneInstance {1, 0, 1, 0}};
         const std::array<SceneInstance, 1> badMaterial {SceneInstance {0, 0, 1, 2}};
-        const std::array<SceneModel, 1>    otherMaterial {SceneModel {0, 1, 1, 1}};
+        const std::array<SceneModel, 1>    otherMaterial {SceneModel {0, 1, 1, 1, 0, 4, 0, 6}};
         require(!GpuScene::create(device, scene, textures, nullptr, models, badModel) &&
                     !GpuScene::create(device, scene, textures, nullptr, models, badMaterial) &&
                     !GpuScene::create(device, scene, textures, nullptr, otherMaterial, {}),

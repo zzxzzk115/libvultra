@@ -152,6 +152,69 @@ namespace
         }
     }
 
+    // A geometry processor runs on a model when it is imported, and its output is cached with the model: a second
+    // import gives the same buffers without running it, a new version runs it again, and its failures and malformed
+    // output are errors.
+    void testGeometryProcessors(const std::filesystem::path& root)
+    {
+        makeGltf(root);
+        int                       runs = 0;
+        vultra::GeometryProcessor processor {"test.positions", 1, {}};
+        processor.process = [&runs](const vultra::SceneData& model,
+                                    uint32_t) -> std::expected<std::vector<vultra::GeometryBuffer>, vultra::Error>
+        {
+            ++runs;
+            vultra::GeometryBuffer positions {"test.positions", sizeof(glm::vec3), {}};
+            for (const auto& vertex : model.vertices)
+            {
+                const auto bytes = std::as_bytes(std::span(&vertex.position, 1));
+                positions.bytes.insert(positions.bytes.end(), bytes.begin(), bytes.end());
+            }
+            return std::vector {std::move(positions)};
+        };
+        vultra::AssetImportOptions options;
+        options.cacheDirectory       = root / "cache";
+        options.textures.compression = vultra::TextureCompression::eNone;
+        options.processors           = {processor};
+        const auto cold              = must(vultra::importAsset(root / "model/triangle.gltf", options));
+        const auto warm              = must(vultra::importAsset(root / "model/triangle.gltf", options));
+        require(runs == 1 && !cold.cacheHit && warm.cacheHit, "A cached processor output ran the processor again");
+        require(cold.buffers.size() == 1 && cold.buffers[0].name == "test.positions" &&
+                    cold.buffers[0].bytes.size() == cold.scene.vertices.size() * sizeof(glm::vec3) &&
+                    warm.buffers[0].bytes == cold.buffers[0].bytes && warm.buffers[0].elementSize == sizeof(glm::vec3),
+                "The cached processor output differs from what it made");
+        options.processors[0].version = 2;
+        require(!must(vultra::importAsset(root / "model/triangle.gltf", options)).cacheHit && runs == 2,
+                "A new processor version hit the old cache");
+        options.processors.clear();
+        require(must(vultra::importAsset(root / "model/triangle.gltf", options)).buffers.empty(),
+                "An import without processors gave their buffers");
+
+        options.processors = {processor, processor};
+        const auto twice   = vultra::importAsset(root / "model/triangle.gltf", options);
+        require(!twice && twice.error().message.find("already taken") != std::string::npos,
+                "Two processors giving one buffer name were accepted");
+        vultra::GeometryProcessor broken {"test.broken", 1, {}};
+        broken.process = [](const vultra::SceneData&,
+                            uint32_t) -> std::expected<std::vector<vultra::GeometryBuffer>, vultra::Error>
+        {
+            return std::vector {vultra::GeometryBuffer {"test.broken", 4, std::vector<std::byte>(3)}};
+        };
+        options.processors = {broken};
+        const auto partial = vultra::importAsset(root / "model/triangle.gltf", options);
+        require(!partial && partial.error().message.find("whole number of elements") != std::string::npos,
+                "A buffer of part of an element was accepted");
+        broken.process = [](const vultra::SceneData&,
+                            uint32_t) -> std::expected<std::vector<vultra::GeometryBuffer>, vultra::Error>
+        {
+            return vultra::makeError("no meshlets today");
+        };
+        options.processors = {broken};
+        const auto failed  = vultra::importAsset(root / "model/triangle.gltf", options);
+        require(!failed && failed.error().message.find("test.broken: no meshlets today") != std::string::npos,
+                "A processor's failure did not fail the import with its name");
+    }
+
     void testMipFiltering()
     {
         vultra::TextureImportOptions options;
@@ -411,6 +474,7 @@ int main()
                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     makeGltf(root);
     testDerivedCache(root / "derived");
+    testGeometryProcessors(root / "processors");
     testParallelGeometry(root);
     testTangentImport(root / "tangents");
     const auto                 source        = root / "model/triangle.gltf";

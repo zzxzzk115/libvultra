@@ -228,7 +228,11 @@ FBX and cache derived data keyed by source and dependency hashes. Geometry is st
 file's node transforms applied; the glTF importer also keeps the node hierarchy in `SceneData::nodes`, each
 node with its own transform and primitives. `AssetSource` reads from the filesystem or a
 VPK archive, including one embedded in an executable or mapped from memory; persistent references are paths,
-never GPU handles. Meshlet data is built with meshoptimizer. All file formats are version 1.
+never GPU handles. Meshlet data is built with meshoptimizer. A `GeometryProcessor` (`AssetImportOptions::processors`)
+derives named buffers from a model when it is imported; they are cached with the model, the recipe naming each
+processor and its version, so a cache hit, as in a packed project, does not run it. `GpuScene::addBuffer` keeps such
+buffers for stages, which find them with `GpuScene::buffer(name)`; a geometry stage names the processor it reads in
+`StageDesc::geometryProcessor`. All file formats are version 1.
 
 ## UI
 
