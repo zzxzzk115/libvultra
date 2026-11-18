@@ -344,7 +344,9 @@ clang-tidy -p . path/to/changed.cpp
 - `xmake lua tests/build_modules.lua [module...]` builds the library once per module, each selected alone, in
   `build/.tmp/modules/<module>` with its own configuration. It reads platform, architecture, mode and
   `libvultra_vri_dir` from the main configuration, so configure the root project first.
-- clang-tidy uses the root `compile_commands.json`, which xmake regenerates for the current configuration.
+- clang-tidy uses the root `compile_commands.json`, which xmake regenerates for the current configuration. With the
+  MSVC toolchain on Windows it also needs `--extra-arg=/std:c++latest`; without it, clang-tidy reads the commands
+  without the C++ standard and reports errors in the standard library instead of checking the file.
 
 Rendering changes need finite-frame runs, validation-layer checks and image readback; compilation or a successful
 exit code alone does not prove correct rendering. Keep verification output under `build/.tmp/`.
