@@ -98,6 +98,10 @@ Added:
   buffers (C1): `RenderGraph::createHistoryBuffer`, zeroed by a copy from one upload buffer on every API.
   `RenderView::slots`: a derived view runs the view stages of the slots it lists (C3, `stereo.derive_slots` in the
   host).
+- M9 part a (2026-11-18), in progress: models and instances in `GpuScene` (`SceneModel`, `SceneInstance`,
+  `SceneDraw`, `InstanceData`/`ModelData`, `scene.models`); named scene buffers (`addBuffer`, `buffer`); geometry
+  processors cached with the model (`GeometryProcessor`, `ImportedAsset::buffers`, `StageDesc::geometryProcessor`).
+  `vultra.meshlets` and `example.visibility_buffer` are in Vultra-Packages.
 - Slang user-attribute and field-initializer reflection, stored in cooked programs.
 - A render graph execution plan with batches per queue, async compute through `execute(Frame&)`, and
   `writeDot()`.

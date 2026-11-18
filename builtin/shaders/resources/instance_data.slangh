@@ -17,4 +17,8 @@ struct ModelData
     uint primitiveCount;
     uint firstMaterial;
     uint materialCount;
+    uint firstVertex;
+    uint vertexCount;
+    uint firstIndex;
+    uint indexCount;
 };

@@ -9,6 +9,9 @@
 #include <expected>
 #include <memory>
 #include <span>
+#include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 namespace vultra
@@ -22,14 +25,19 @@ namespace vultra
         glm::vec3 extent {0};
     };
 
-    // A model of a scene: geometry stored once, which instances draw. Its primitives and materials are ranges of the
-    // scene's; the primitives' material numbers are the scene's too.
+    // A model of a scene: geometry stored once, which instances draw. Its vertices, indices, primitives and materials
+    // are ranges of the scene's; its indices and the primitives' material numbers are the scene's too. Data a
+    // geometry processor derived from the model counts from these firsts.
     struct SceneModel
     {
         uint32_t firstPrimitive = 0;
         uint32_t primitiveCount = 0;
         uint32_t firstMaterial  = 0;
         uint32_t materialCount  = 0;
+        uint32_t firstVertex    = 0;
+        uint32_t vertexCount    = 0;
+        uint32_t firstIndex     = 0;
+        uint32_t indexCount     = 0;
     };
 
     // An entity that draws primitives of a model with its own transform: primitives [firstPrimitive,
@@ -62,14 +70,8 @@ namespace vultra
         glm::uvec4 references;    // Model, first primitive (of the scene), primitive count, first material.
     };
 
-    // One record of scene.models. Keep in sync with builtin/shaders/resources/instance_data.slangh.
-    struct ModelData
-    {
-        uint32_t firstPrimitive;
-        uint32_t primitiveCount;
-        uint32_t firstMaterial;
-        uint32_t materialCount;
-    };
+    // One record of scene.models: SceneModel. Keep in sync with builtin/shaders/resources/instance_data.slangh.
+    using ModelData = SceneModel;
 
     // The material type of model files, vultra.openpbr, is number 0 in every program's vultra.materials.
     inline constexpr uint32_t kOpenPbrMaterialType = 0;
@@ -125,6 +127,12 @@ namespace vultra
         [[nodiscard]] std::expected<void, Error>
                               setMaterialType(uint32_t material, uint32_t type, std::span<const uint32_t> parameters);
         const MaterialHeader& materialHeader(uint32_t material) const;
+        // Keeps `bytes`, elements of `elementSize` bytes such as a geometry processor's output, in a storage buffer
+        // that stages import under `name`. Names are unique. Call before the scene is bound to a graph.
+        [[nodiscard]] std::expected<void, Error>
+        addBuffer(std::string name, uint32_t elementSize, std::span<const std::byte> bytes);
+        // The buffer added under `name`; an error names the buffers the scene has.
+        [[nodiscard]] std::expected<Buffer*, Error> buffer(std::string_view name) const;
         // Writes the vultra.openpbr blocks of scene.material_data from `materials` again, so that changes to them
         // show. RenderPath::prepare() calls it every frame, after the previous frame completed.
         [[nodiscard]] std::expected<void, Error> writeMaterials();
@@ -161,7 +169,8 @@ namespace vultra
         std::vector<PrimitiveBounds> m_LocalBounds; // Per primitive.
         std::vector<PrimitiveBounds> m_WorldBounds; // Per draw.
         uint64_t                     m_TransformRevision = 0;
-        std::vector<MaterialHeader>  m_MaterialHeaders;
-        std::vector<uint32_t>        m_MaterialWords;
+        std::vector<std::pair<std::string, std::unique_ptr<Buffer>>> m_Buffers; // addBuffer()'s, in its order.
+        std::vector<MaterialHeader>                                  m_MaterialHeaders;
+        std::vector<uint32_t>                                        m_MaterialWords;
     };
 } // namespace vultra

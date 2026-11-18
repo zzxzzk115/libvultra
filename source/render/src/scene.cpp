@@ -20,7 +20,7 @@ namespace vultra
     {
         static_assert(sizeof(InstanceData) == 224 && offsetof(InstanceData, previousModel) == 144 &&
                       offsetof(InstanceData, references) == 208);
-        static_assert(sizeof(ModelData) == 16);
+        static_assert(sizeof(ModelData) == 32);
 
         // Per-instance and per-draw queries take indices from the scene's own tables; any other index is a bug.
         void requireIndex(uint32_t index, size_t count)
@@ -240,14 +240,23 @@ namespace vultra
         result->models.assign(models.begin(), models.end());
         if (result->models.empty())
         {
-            result->models.push_back({0, uint32_t(scene.primitives.size()), 0, uint32_t(scene.materials.size())});
+            result->models.push_back({0,
+                                      uint32_t(scene.primitives.size()),
+                                      0,
+                                      uint32_t(scene.materials.size()),
+                                      0,
+                                      uint32_t(scene.vertices.size()),
+                                      0,
+                                      uint32_t(scene.indices.size())});
         }
         for (const auto& model : result->models)
         {
             if (uint64_t(model.firstPrimitive) + model.primitiveCount > scene.primitives.size() ||
-                uint64_t(model.firstMaterial) + model.materialCount > scene.materials.size())
+                uint64_t(model.firstMaterial) + model.materialCount > scene.materials.size() ||
+                uint64_t(model.firstVertex) + model.vertexCount > scene.vertices.size() ||
+                uint64_t(model.firstIndex) + model.indexCount > scene.indices.size())
             {
-                return makeError("A scene model's primitives or materials lie outside the scene");
+                return makeError("A scene model's primitives, materials, vertices or indices lie outside the scene");
             }
             for (uint32_t index = 0; index < model.primitiveCount; ++index)
             {
@@ -324,13 +333,8 @@ namespace vultra
         {
             return std::unexpected(instanceData.error());
         }
-        result->instanceData = std::make_unique<Buffer>(std::move(*instanceData));
-        std::vector<ModelData> modelRecords;
-        for (const auto& model : result->models)
-        {
-            modelRecords.push_back(
-                {model.firstPrimitive, model.primitiveCount, model.firstMaterial, model.materialCount});
-        }
+        result->instanceData                       = std::make_unique<Buffer>(std::move(*instanceData));
+        const std::vector<ModelData>& modelRecords = result->models;
         // Host-visible like scene.instances, which keeps it out of barriers.
         auto modelData = Buffer::create(device,
                                         VriBufferDesc {modelRecords.size() * sizeof(ModelData),
@@ -655,6 +659,49 @@ namespace vultra
         }
         m_Device.core.UnmapBuffer(instanceData->handle);
         return {};
+    }
+
+    std::expected<void, Error>
+    GpuScene::addBuffer(std::string name, uint32_t elementSize, std::span<const std::byte> bytes)
+    {
+        if (name.empty() ||
+            std::ranges::contains(m_Buffers, name, &std::pair<std::string, std::unique_ptr<Buffer>>::first))
+        {
+            return makeError("Add scene buffer '{}': the name is empty or taken", name);
+        }
+        if (elementSize == 0 || bytes.size() % elementSize != 0)
+        {
+            return makeError("Add scene buffer '{}': {} bytes are not elements of {}", name, bytes.size(), elementSize);
+        }
+        // A storage buffer is never empty: one without elements holds one zero element.
+        const std::vector<std::byte> zero(elementSize);
+        auto                         uploaded = uploadBuffer(m_Device,
+                                     bytes.empty() ? std::span<const std::byte>(zero) : bytes,
+                                     VriBufferUsage_StorageBuffer | VriBufferUsage_TransferSrc,
+                                                             {VriAccess_ShaderResourceRead, VriPipelineStage_ComputeShader},
+                                     elementSize);
+        if (!uploaded)
+        {
+            return makeError("Add scene buffer '{}': {}", name, uploaded.error().message);
+        }
+        m_Device.core.SetDebugName(uploaded->handle, name.c_str());
+        m_Buffers.emplace_back(std::move(name), std::make_unique<Buffer>(std::move(*uploaded)));
+        return {};
+    }
+
+    std::expected<Buffer*, Error> GpuScene::buffer(std::string_view name) const
+    {
+        const auto found = std::ranges::find(m_Buffers, name, &std::pair<std::string, std::unique_ptr<Buffer>>::first);
+        if (found != m_Buffers.end())
+        {
+            return found->second.get();
+        }
+        std::string known;
+        for (const auto& [each, buffer] : m_Buffers)
+        {
+            known += (known.empty() ? "" : ", ") + each;
+        }
+        return makeError("The scene has no buffer '{}'; it has {}", name, known.empty() ? "none" : known);
     }
 
     const PrimitiveBounds& GpuScene::drawBounds(uint32_t draw) const

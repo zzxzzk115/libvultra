@@ -99,6 +99,10 @@ namespace vultra
                                  {"materials", int(options.fbx.materialConvention)},
                                  {"directx_normals", options.fbx.directXNormalMaps}};
             }
+            for (const auto& processor : options.processors)
+            {
+                recipe["processors"].push_back({{"name", processor.name}, {"version", processor.version}});
+            }
             return recipe;
         }
 
@@ -281,6 +285,92 @@ namespace vultra
                 return makeError("Asset import recipe changed");
             }
             return metadata;
+        }
+
+        void writeBuffers(CacheWriter& writer, std::span<const GeometryBuffer> buffers)
+        {
+            writer.value(uint32_t(buffers.size()));
+            for (const auto& buffer : buffers)
+            {
+                writer.array(std::span<const char>(buffer.name));
+                writer.value(buffer.elementSize);
+                writer.array(buffer.bytes);
+            }
+        }
+
+        // The buffers of the import options' processors, in their order; anything else means a stale cache.
+        std::expected<std::vector<GeometryBuffer>, Error> readBuffers(CacheReader& reader)
+        {
+            const auto count = reader.value<uint32_t>();
+            if (!count)
+            {
+                return std::unexpected(count.error());
+            }
+            if (*count > 1024)
+            {
+                return makeError("Invalid cached geometry buffer count");
+            }
+            std::vector<GeometryBuffer> result(*count);
+            for (auto& buffer : result)
+            {
+                const auto name = reader.array<char>();
+                if (!name)
+                {
+                    return std::unexpected(name.error());
+                }
+                const auto elementSize = reader.value<uint32_t>();
+                if (!elementSize)
+                {
+                    return std::unexpected(elementSize.error());
+                }
+                auto bytes = reader.array<std::byte>();
+                if (!bytes)
+                {
+                    return std::unexpected(bytes.error());
+                }
+                if (*elementSize == 0 || bytes->size() % *elementSize != 0)
+                {
+                    return makeError("Invalid cached geometry buffer");
+                }
+                buffer = {std::string(name->begin(), name->end()), *elementSize, std::move(*bytes)};
+            }
+            return result;
+        }
+
+        // Runs the processors on the model and checks what they give: whole elements, names not yet taken.
+        std::expected<std::vector<GeometryBuffer>, Error> runProcessors(const SceneData&          model,
+                                                                        const AssetImportOptions& options)
+        {
+            std::vector<GeometryBuffer> result;
+            for (const auto& processor : options.processors)
+            {
+                if (!processor.process)
+                {
+                    return makeError("Geometry processor {} has no function", processor.name);
+                }
+                auto buffers = processor.process(model, options.workers);
+                if (!buffers)
+                {
+                    return makeError("Geometry processor {}: {}", processor.name, buffers.error().message);
+                }
+                for (auto& buffer : *buffers)
+                {
+                    if (buffer.elementSize == 0 || buffer.bytes.size() % buffer.elementSize != 0)
+                    {
+                        return makeError("Geometry processor {}: buffer {} is not a whole number of elements",
+                                         processor.name,
+                                         buffer.name);
+                    }
+                    if (buffer.name.empty() || std::ranges::contains(result, buffer.name, &GeometryBuffer::name))
+                    {
+                        return makeError("Geometry processor {}: buffer name '{}' is empty or already taken",
+                                         processor.name,
+                                         buffer.name);
+                    }
+                    result.push_back(std::move(buffer));
+                }
+            }
+            return result;
         }
 
         void writeTextures(CacheWriter& writer, const PreparedTextures& textures)
@@ -498,11 +588,18 @@ namespace vultra
             return validateDependencies(*dependencies, options.workers, assetSource);
         }
 
-        // Restores derived textures when the cache matches the loaded source content; failures mean reimport.
-        std::expected<PreparedTextures, Error> readCache(const CacheTarget&        target,
-                                                         const Json&               dependencies,
-                                                         const SceneData&          scene,
-                                                         const AssetImportOptions& options)
+        struct CachedData
+        {
+            std::vector<GeometryBuffer> buffers;
+            PreparedTextures            textures;
+        };
+
+        // Restores derived buffers and textures when the cache matches the loaded source content; failures mean
+        // reimport.
+        std::expected<CachedData, Error> readCache(const CacheTarget&        target,
+                                                   const Json&               dependencies,
+                                                   const SceneData&          scene,
+                                                   const AssetImportOptions& options)
         {
             const auto bytes = readFile(target.cachePath);
             if (!bytes)
@@ -520,13 +617,24 @@ namespace vultra
             {
                 return makeError("Changed asset source dependencies");
             }
-            return readTextures(archive, scene, options);
+            auto buffers = readBuffers(archive);
+            if (!buffers)
+            {
+                return std::unexpected(buffers.error());
+            }
+            auto textures = readTextures(archive, scene, options);
+            if (!textures)
+            {
+                return std::unexpected(textures.error());
+            }
+            return CachedData {std::move(*buffers), std::move(*textures)};
         }
 
-        std::expected<size_t, Error> writeCache(const CacheTarget&        target,
-                                                const Json&               dependencies,
-                                                const PreparedTextures&   textures,
-                                                const AssetImportOptions& options)
+        std::expected<size_t, Error> writeCache(const CacheTarget&              target,
+                                                const Json&                     dependencies,
+                                                std::span<const GeometryBuffer> buffers,
+                                                const PreparedTextures&         textures,
+                                                const AssetImportOptions&       options)
         {
             const auto metadata = dumpJson(Json {{"recipe", target.recipe}, {"dependencies", dependencies}});
             if (!metadata)
@@ -540,6 +648,7 @@ namespace vultra
             archive.value(uint64_t(0));
             const auto payloadOffset = archive.data.size();
             archive.array(std::span<const char>(*metadata));
+            writeBuffers(archive, buffers);
             writeTextures(archive, textures);
             const auto checksum = XXH3_64bits(archive.data.data() + payloadOffset, archive.data.size() - payloadOffset);
             std::memcpy(archive.data.data() + checksumOffset, &checksum, sizeof(checksum));
@@ -670,10 +779,11 @@ namespace vultra
         if (options.cache && !options.reimport && std::filesystem::exists(target->cachePath, cacheError))
         {
             Logger::core().info("Checking derived cache against loaded source content: {}", pathText(input));
-            auto textures = readCache(*target, dependencies, asset.scene, options);
-            if (textures)
+            auto cached = readCache(*target, dependencies, asset.scene, options);
+            if (cached)
             {
-                asset.textures = std::move(*textures);
+                asset.buffers  = std::move(cached->buffers);
+                asset.textures = std::move(cached->textures);
                 asset.scene.images.clear();
                 asset.cacheHit  = true;
                 asset.cachePath = target->cachePath;
@@ -683,11 +793,20 @@ namespace vultra
                     std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count());
                 return asset;
             }
-            Logger::core().info("Reimport {}: {}", pathText(input), textures.error().message);
+            Logger::core().info("Reimport {}: {}", pathText(input), cached.error().message);
         }
         if (cacheError)
         {
             return makeError("Query asset cache {}: {}", pathText(target->cachePath), cacheError.message());
+        }
+        if (!options.processors.empty())
+        {
+            auto buffers = runProcessors(asset.scene, options);
+            if (!buffers)
+            {
+                return std::unexpected(buffers.error());
+            }
+            asset.buffers = std::move(*buffers);
         }
         const auto textureStarted = std::chrono::steady_clock::now();
         auto       textures       = prepareTextures(asset.scene, options.textures, options.workers);
@@ -711,7 +830,7 @@ namespace vultra
         {
             Logger::core().info("Writing asset cache: {}", pathText(target->cachePath));
             const auto writeStarted = std::chrono::steady_clock::now();
-            const auto written      = writeCache(*target, dependencies, asset.textures, options);
+            const auto written      = writeCache(*target, dependencies, asset.buffers, asset.textures, options);
             if (written)
             {
                 Logger::core().info(

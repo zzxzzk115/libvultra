@@ -201,6 +201,9 @@ namespace vultra
         // A view stage: the auxiliary views it renders for each of the path's views. The stages in their slots may
         // not ask for views of their own.
         std::vector<AuxiliaryViewDesc> auxiliaryViews;
+        // A geometry stage: the geometry processor whose buffers it reads, run on every model when it is imported.
+        // The caller resolves the name; the kernel keeps no registry of processors.
+        std::string geometryProcessor;
     };
 
     struct StageBuild;
