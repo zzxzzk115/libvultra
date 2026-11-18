@@ -37,10 +37,20 @@ namespace vultra
         [[nodiscard]] std::expected<ShaderProgram, Error> compileSource(const std::filesystem::path& file,
                                                                         std::string_view             text,
                                                                         const ShaderCompileOptions&  options = {});
-        const ShaderCompileStatistics&                    lastCompileStatistics() const;
+        // Every variant for options.profile, one per combination of the keywords' values, the default first.
+        [[nodiscard]] std::expected<std::vector<ShaderProgram>, Error>
+        compileVariants(const std::filesystem::path& file, const ShaderCompileOptions& options = {});
+        [[nodiscard]] std::expected<std::vector<ShaderProgram>, Error>
+                                       compileVariants(const std::filesystem::path& file,
+                                                       std::string_view             text,
+                                                       const ShaderCompileOptions&  options = {});
+        const ShaderCompileStatistics& lastCompileStatistics() const;
 
     private:
         explicit ShaderCompiler(std::filesystem::path cacheDirectory);
+        // One variant: options.defines as given, keywords not interpreted.
+        std::expected<ShaderProgram, Error>
+        compileVariant(const std::filesystem::path& file, std::string_view text, const ShaderCompileOptions& options);
 
         struct Impl;
         std::unique_ptr<Impl> m_Impl;

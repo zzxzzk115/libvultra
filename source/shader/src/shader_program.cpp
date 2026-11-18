@@ -13,6 +13,26 @@ namespace vultra
     namespace
     {
         constexpr size_t kMaxFileSize = 64 * 1024 * 1024;
+        // Targets times keyword combinations in one archive.
+        constexpr size_t kMaxPrograms = 256;
+
+        // Whether two programs of an archive are the same target: profile and keyword values.
+        bool sameVariant(const ShaderProgram& a, const ShaderProgram& b)
+        {
+            if (a.profile != b.profile || a.keywordValues.size() != b.keywordValues.size())
+            {
+                return false;
+            }
+            for (size_t index = 0; index < a.keywordValues.size(); ++index)
+            {
+                if (a.keywordValues[index].name != b.keywordValues[index].name ||
+                    a.keywordValues[index].value != b.keywordValues[index].value)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
 
         bool validStage(VriShaderStageBits stage)
         {
@@ -35,7 +55,8 @@ namespace vultra
                 return makeError("ShaderProgram requires a raw Slang artifact: {}", identity.string());
             }
             const auto programs = document.find("programs");
-            if (programs == document.end() || !programs->is_array() || programs->empty() || programs->size() > 16)
+            if (programs == document.end() || !programs->is_array() || programs->empty() ||
+                programs->size() > kMaxPrograms)
             {
                 return makeError("Invalid cooked shader targets: {}", identity.string());
             }
@@ -51,7 +72,11 @@ namespace vultra
                 {
                     return std::unexpected(valid.error());
                 }
-                if (std::ranges::find(result, program->profile, &ShaderProgram::profile) != result.end())
+                if (std::ranges::any_of(result,
+                                        [&](const ShaderProgram& other)
+                                        {
+                                            return sameVariant(other, *program);
+                                        }))
                 {
                     return makeError("Cooked shader repeats target {}: {}", program->profile, identity.string());
                 }
@@ -62,29 +87,55 @@ namespace vultra
 
         std::string targetNames(std::span<const ShaderProgram> programs)
         {
-            std::string names;
+            std::vector<std::string> profiles;
             for (const auto& program : programs)
             {
-                names += (names.empty() ? "" : ", ") + program.profile;
+                if (std::ranges::find(profiles, program.profile) == profiles.end())
+                {
+                    profiles.push_back(program.profile);
+                }
+            }
+            std::string names;
+            for (const auto& profile : profiles)
+            {
+                names += (names.empty() ? "" : ", ") + profile;
             }
             return names;
         }
 
         std::expected<ShaderProgram, Error> selectTarget(std::expected<std::vector<ShaderProgram>, Error> programs,
                                                          std::string_view                                 profile,
+                                                         std::span<const ShaderDefine>                    keywords,
                                                          const std::filesystem::path&                     identity)
         {
             if (!programs)
             {
                 return std::unexpected(programs.error());
             }
-            const auto found = std::ranges::find(*programs, profile, &ShaderProgram::profile);
-            if (found == programs->end())
+            const auto first = std::ranges::find(*programs, profile, &ShaderProgram::profile);
+            if (first == programs->end())
             {
                 return makeError("{} has no shaders for {}; it was cooked for {}",
                                  identity.string(),
                                  profile,
                                  targetNames(*programs));
+            }
+            ShaderProgram wanted;
+            wanted.profile = std::string(profile);
+            auto values    = detail::keywordValues(first->keywords, keywords);
+            if (!values)
+            {
+                return makeError("{}: {}", identity.string(), values.error().message);
+            }
+            wanted.keywordValues = std::move(*values);
+            const auto found     = std::ranges::find_if(*programs,
+                                                    [&](const ShaderProgram& program)
+                                                    {
+                                                        return sameVariant(program, wanted);
+                                                    });
+            if (found == programs->end())
+            {
+                return makeError("{} was cooked without the variant {} asks for", identity.string(), profile);
             }
             return std::move(*found);
         }
@@ -96,7 +147,7 @@ namespace vultra
             {
                 return std::unexpected(programs.error());
             }
-            if (programs->size() != 1)
+            if (programs->size() != 1 || !programs->front().keywords.empty())
             {
                 return makeError("{} holds shaders for {}; load the one a device needs",
                                  identity.string(),
@@ -267,9 +318,9 @@ namespace vultra
     std::expected<void, Error> ShaderProgram::save(const std::filesystem::path&   file,
                                                    std::span<const ShaderProgram> targets)
     {
-        if (targets.empty() || targets.size() > 16)
+        if (targets.empty() || targets.size() > kMaxPrograms)
         {
-            return makeError("A cooked shader holds 1 to 16 targets: {}", file.string());
+            return makeError("A cooked shader holds 1 to {} targets: {}", kMaxPrograms, file.string());
         }
         nlohmann::json programs = nlohmann::json::array();
         for (const auto& program : targets)
@@ -278,9 +329,13 @@ namespace vultra
             {
                 return valid;
             }
-            if (std::ranges::count(targets, program.profile, &ShaderProgram::profile) != 1)
+            if (std::ranges::count_if(targets,
+                                      [&](const ShaderProgram& other)
+                                      {
+                                          return sameVariant(other, program);
+                                      }) != 1)
             {
-                return makeError("A cooked shader holds one program per target, {} twice: {}",
+                return makeError("A cooked shader holds one program per target and keyword values, {} twice: {}",
                                  program.profile,
                                  file.string());
             }
@@ -321,15 +376,18 @@ namespace vultra
         return onlyTarget(loadTargets(bytes, identity), identity);
     }
 
-    std::expected<ShaderProgram, Error> ShaderProgram::load(const std::filesystem::path& file, std::string_view profile)
+    std::expected<ShaderProgram, Error> ShaderProgram::load(const std::filesystem::path&  file,
+                                                            std::string_view              profile,
+                                                            std::span<const ShaderDefine> keywords)
     {
-        return selectTarget(loadTargets(file), profile, file);
+        return selectTarget(loadTargets(file), profile, keywords, file);
     }
 
-    std::expected<ShaderProgram, Error> ShaderProgram::load(std::span<const std::byte>   bytes,
-                                                            const std::filesystem::path& identity,
-                                                            std::string_view             profile)
+    std::expected<ShaderProgram, Error> ShaderProgram::load(std::span<const std::byte>    bytes,
+                                                            const std::filesystem::path&  identity,
+                                                            std::string_view              profile,
+                                                            std::span<const ShaderDefine> keywords)
     {
-        return selectTarget(loadTargets(bytes, identity), profile, identity);
+        return selectTarget(loadTargets(bytes, identity), profile, keywords, identity);
     }
 } // namespace vultra

@@ -1,3 +1,4 @@
+#include "shader_archive.hpp"
 #include "shader_cache.hpp"
 #include "shader_toolchain_key.hpp"
 
@@ -25,36 +26,59 @@ namespace vultra
             return std::string {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
         }
 
-        // Whether an existing cooked archive holds exactly these targets, built from the same requests (one key per
-        // target) and the same inputs.
-        std::expected<bool, Error> cookedProgramCurrent(const std::filesystem::path&                    source,
-                                                        const std::filesystem::path&                    output,
-                                                        std::span<const std::pair<std::string, std::string>> keys,
-                                                        const ShaderCompileOptions&                     options)
+        // Whether an existing cooked archive holds the variants of exactly these targets, built from the same requests
+        // and the same inputs. Each target's default variant has the key of `targets`; the others add their keyword
+        // macros, so their keys follow from the keywords the archive records.
+        std::expected<bool, Error> cookedProgramCurrent(const std::filesystem::path&          source,
+                                                        std::string_view                      text,
+                                                        const std::filesystem::path&          output,
+                                                        std::span<const ShaderCompileOptions> targets)
         {
             const auto previous = ShaderProgram::loadTargets(output);
             if (!previous)
             {
                 return std::unexpected(previous.error());
             }
-            if (previous->size() != keys.size())
+            size_t expected = 0;
+            for (const auto& target : targets)
             {
-                return false;
-            }
-            for (const auto& [profile, key] : keys)
-            {
-                const auto found = std::ranges::find(*previous, profile, &ShaderProgram::profile);
-                if (found == previous->end() || found->compileKey != key)
+                const auto first = std::ranges::find(*previous, target.profile, &ShaderProgram::profile);
+                if (first == previous->end())
                 {
                     return false;
                 }
-                const auto current = detail::shaderDependenciesCurrent(found->dependencies, source, options);
-                if (!current || !*current)
+                size_t combinations = 1;
+                for (const auto& keyword : first->keywords)
                 {
-                    return current;
+                    combinations *= keyword.values.size();
+                }
+                expected += combinations;
+                for (const auto& program : *previous)
+                {
+                    if (program.profile != target.profile)
+                    {
+                        continue;
+                    }
+                    auto       variant = target;
+                    const auto defines = detail::keywordDefines(program.keywords, program.keywordValues);
+                    variant.defines.insert(variant.defines.end(), defines.begin(), defines.end());
+                    const auto key = detail::shaderCompileKey(source, text, variant);
+                    if (!key)
+                    {
+                        return std::unexpected(key.error());
+                    }
+                    if (program.compileKey != *key)
+                    {
+                        return false;
+                    }
+                    const auto current = detail::shaderDependenciesCurrent(program.dependencies, source, variant);
+                    if (!current || !*current)
+                    {
+                        return current;
+                    }
                 }
             }
-            return true;
+            return previous->size() == expected;
         }
     } // namespace
 
@@ -94,6 +118,17 @@ namespace vultra
         return compiler->compileSource(file, text, options);
     }
 
+    std::expected<std::vector<ShaderProgram>, Error> ShaderProgram::compileVariants(const std::filesystem::path& file,
+                                                                                    const ShaderCompileOptions& options)
+    {
+        auto compiler = ShaderCompiler::create();
+        if (!compiler)
+        {
+            return std::unexpected(compiler.error());
+        }
+        return compiler->compileVariants(file, options);
+    }
+
     std::string ShaderProgram::compilerVersion()
     {
         return std::string(spGetBuildTagString()) + ";" + kShaderToolchainKey;
@@ -119,20 +154,10 @@ namespace vultra
         {
             targets.push_back(options);
         }
-        std::vector<std::pair<std::string, std::string>> keys;
-        for (const auto& target : targets)
-        {
-            const auto key = detail::shaderCompileKey(source, *text, target);
-            if (!key)
-            {
-                return std::unexpected(key.error());
-            }
-            keys.emplace_back(target.profile, *key);
-        }
         std::error_code error;
         if (std::filesystem::is_regular_file(output, error))
         {
-            const auto current = cookedProgramCurrent(source, output, keys, options);
+            const auto current = cookedProgramCurrent(source, *text, output, targets);
             if (!current)
             {
                 Logger::core().warn("Rebuilding unreadable shader cache {}: {}",
@@ -146,19 +171,27 @@ namespace vultra
             }
         }
         Logger::core().info("Cooking raw Slang shader: {}", source.string());
+        auto compiler = ShaderCompiler::create();
+        if (!compiler)
+        {
+            return std::unexpected(compiler.error());
+        }
         std::vector<ShaderProgram> programs;
         for (const auto& target : targets)
         {
-            auto candidate = compileSource(source, *text, target);
-            if (!candidate)
+            auto variants = compiler->compileVariants(source, *text, target);
+            if (!variants)
             {
-                return std::unexpected(candidate.error());
+                return std::unexpected(variants.error());
             }
-            if (!candidate->diagnostics.empty())
+            for (auto& variant : *variants)
             {
-                Logger::core().warn("{}", candidate->diagnostics);
+                if (!variant.diagnostics.empty())
+                {
+                    Logger::core().warn("{}", variant.diagnostics);
+                }
+                programs.push_back(std::move(variant));
             }
-            programs.push_back(std::move(*candidate));
         }
         if (auto saved = save(output, programs); !saved)
         {

@@ -2,6 +2,7 @@
 #include "support/check.hpp"
 #include "support/cleared_texture.hpp"
 
+#include <vultra/gpu/buffer_upload.hpp>
 #include <vultra/gpu/image_readback.hpp>
 #include <vultra/graph/render_graph.hpp>
 #include <vultra/platform/os/file.hpp>
@@ -13,6 +14,7 @@
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <set>
 #include <thread>
 #include <tuple>
 
@@ -424,6 +426,184 @@ void main(uint3 id : SV_DispatchThreadID)
         }
         device->core.DestroyPipelineLayout(layout);
     }
+
+    // Keywords: a program with a bool and a three-valued enum keyword has six variants. Each computes, from the
+    // macros in its source and in a module it imports, a number that only its keyword values give; the variants
+    // compile to distinct keys, a cooked archive holds all six and selects each, and an unknown keyword or value is
+    // refused with the choices.
+    void keywordVariants(const std::filesystem::path& root)
+    {
+        using namespace vultra;
+        const auto directory = root / "keywords";
+        std::filesystem::create_directories(directory);
+        std::ofstream(directory / "keyword_module.slang", std::ios::trunc) << R"(module keyword_module;
+public uint moduleFlag()
+{
+#if FLAG
+    return 100;
+#else
+    return 0;
+#endif
+}
+)";
+        const auto source = directory / "keywords.slang";
+        std::ofstream(source, std::ios::trunc) << R"(import vultra.keywords;
+import keyword_module;
+[VultraKeyword("FLAG", "bool")]
+[VultraKeyword("MODE", "enum:low,mid,high")]
+void vultraKeywords() {}
+RWStructuredBuffer<uint> result;
+[shader("compute")]
+[numthreads(1, 1, 1)]
+void main()
+{
+#if MODE == 2
+    const uint mode = 2;
+#elif MODE == 1
+    const uint mode = 1;
+#else
+    const uint mode = 0;
+#endif
+#if FLAG
+    const uint flag = 10;
+#else
+    const uint flag = 0;
+#endif
+    result[0] = flag + mode + moduleFlag();
+}
+)";
+        const auto           device = must(Device::create());
+        ShaderCompileOptions options;
+        options.includeDirectories = {"builtin/shaders", directory};
+        options.profile            = shaderProfile(device->graphicsAPI());
+        const auto variants        = must(ShaderProgram::compileVariants(source, options));
+        require(variants.size() == 6 && variants.front().keywords.size() == 2 &&
+                    variants.front().keywords[1].values == std::vector<std::string> {"low", "mid", "high"},
+                "Keyword declarations or their combinations were not reflected");
+        std::set<std::string> keys;
+        for (const auto& variant : variants)
+        {
+            keys.insert(variant.compileKey);
+        }
+        require(keys.size() == variants.size(), "Two keyword variants share a compile key");
+
+        // Each variant computes its own number on the GPU.
+        const auto run = [&](const ShaderProgram& program) -> uint32_t
+        {
+            const auto                 bindings = must(program.resourceBindings());
+            const auto                 laid     = must(shaderSetLayout(device->graphicsAPI(),
+                                                   bindings,
+                                                   std::vector<bool>(bindings.size(), true),
+                                                   VriShaderStage_Compute));
+            const VriDescriptorSetDesc set {0, laid.ranges.data(), uint32_t(laid.ranges.size())};
+            VriPipelineLayoutDesc      layoutDesc {};
+            layoutDesc.descriptorSets   = &set;
+            layoutDesc.descriptorSetNum = 1;
+            layoutDesc.shaderStages     = VriShaderStage_Compute;
+            VriPipelineLayout* layout   = nullptr;
+            must(check(device->core.CreatePipelineLayout(device->handle, &layoutDesc, &layout), "Keyword layout"));
+            auto                  pipeline = must(ShaderPipeline::create(
+                *device,
+                program,
+                {{"main", VriShaderStage_Compute}},
+                [&](std::span<const VriShaderDesc> shaders) -> std::expected<VriPipeline*, Error>
+                {
+                    VriComputePipelineDesc desc {};
+                    desc.pipelineLayout  = layout;
+                    desc.shader          = shaders.front();
+                    VriPipeline* created = nullptr;
+                    if (auto made = check(device->core.CreateComputePipeline(device->handle, &desc, &created),
+                                          "Keyword pipeline");
+                        !made)
+                    {
+                        return std::unexpected(made.error());
+                    }
+                    return created;
+                }));
+            VriDescriptorPoolDesc poolDesc {};
+            poolDesc.descriptorSetMaxNum = 1;
+            poolDesc.storageBufferMaxNum = 1;
+            VriDescriptorPool* pool      = nullptr;
+            must(check(device->core.CreateDescriptorPool(device->handle, &poolDesc, &pool), "Keyword pool"));
+            VriDescriptorSet* descriptors = nullptr;
+            must(check(device->core.AllocateDescriptorSets(pool, layout, 0, &descriptors, 1), "Keyword set"));
+            auto                    buffer = must(Buffer::create(*device,
+                                                                 {sizeof(uint32_t),
+                                                                  sizeof(uint32_t),
+                                                                  VriBufferUsage_StorageBuffer | VriBufferUsage_TransferSrc,
+                                                                  VriMemoryLocation_Device}));
+            const VriBufferViewDesc viewDesc {buffer.handle,
+                                              VriDescriptorType_StorageBuffer,
+                                              VriFormat_Unknown,
+                                              0,
+                                              sizeof(uint32_t)};
+            VriDescriptor*          view = nullptr;
+            must(check(device->core.CreateBufferView(device->handle, &viewDesc, &view), "Keyword view"));
+            const VriDescriptor*               descriptor = view;
+            const VriDescriptorRangeUpdateDesc update {&descriptor, 1, 0};
+            device->core.UpdateDescriptorRanges(descriptors, 0, 1, &update);
+            RenderGraph graph(*device);
+            const auto  resource = must(graph.importResource("result", buffer));
+            must(graph.addPass(
+                "Keywords",
+                {{resource, Usage::eStorageWrite, true}},
+                [&](VriCommandBuffer* cmd, RenderGraph&) -> std::expected<void, Error>
+                {
+                    device->core.CmdSetPipelineLayout(cmd, layout);
+                    device->core.CmdSetPipeline(cmd, pipeline->handle());
+                    device->core.CmdSetDescriptorSet(cmd, 0, descriptors);
+                    const VriDispatchDesc one {1, 1, 1};
+                    device->core.CmdDispatch(cmd, &one);
+                    return {};
+                },
+                true));
+            must(graph.compile());
+            const auto frame = must(Frame::create(*device));
+            must(graph.execute(must(frame->begin())));
+            must(frame->submitAndWait());
+            const auto bytes = must(readbackBuffer(*device, buffer));
+            uint32_t   value = 0;
+            std::memcpy(&value, bytes.data(), sizeof(value));
+            device->waitIdleForDestruction();
+            device->core.DestroyDescriptor(view);
+            device->core.DestroyDescriptorPool(pool);
+            pipeline.reset();
+            device->core.DestroyPipelineLayout(layout);
+            return value;
+        };
+        for (const auto& variant : variants)
+        {
+            const uint32_t flag     = variant.keywordValues[0].value == "1" ? 110 : 0;
+            const auto&    mode     = variant.keywordValues[1].value;
+            const uint32_t modeTerm = mode == "high" ? 2 : (mode == "mid" ? 1 : 0);
+            require(run(variant) == flag + modeTerm, "A keyword variant did not compile with its macros");
+        }
+
+        // Selecting one variant from source and from a cooked archive gives the same program.
+        auto chosen       = options;
+        chosen.keywords   = {{"MODE", "high"}};
+        const auto single = must(ShaderProgram::compile(source, chosen));
+        require(single.keywordValues.size() == 2 && single.keywordValues[0].value == "0" &&
+                    single.keywordValues[1].value == "high" && single.compileKey == variants[4].compileKey,
+                "Compiling a keyword selection did not give its variant");
+        const auto cooked = directory / "keywords.vshaderc";
+        require(must(ShaderProgram::cook(source, cooked, options)), "Keyword variants were not cooked");
+        require(!must(ShaderProgram::cook(source, cooked, options)), "An unchanged keyword archive was cooked again");
+        require(must(ShaderProgram::loadTargets(cooked)).size() == 6, "The archive does not hold every variant");
+        const auto loaded = must(ShaderProgram::load(cooked, options.profile, chosen.keywords));
+        require(loaded.compileKey == single.compileKey && run(loaded) == 2,
+                "The cooked archive did not select the keyword variant");
+        require(must(ShaderProgram::load(cooked, options.profile)).compileKey == variants[0].compileKey,
+                "The cooked archive's default variant is not the first");
+        support::rejects(ShaderProgram::load(cooked, options.profile, std::vector<ShaderDefine> {{"SHADOWS", "1"}}),
+                         "An unknown keyword was accepted");
+        support::rejects(ShaderProgram::load(cooked, options.profile, std::vector<ShaderDefine> {{"MODE", "ultra"}}),
+                         "An unknown keyword value was accepted");
+        support::rejects(ShaderProgram::load(cooked), "An archive of variants loaded as one program");
+        auto unknown     = options;
+        unknown.keywords = {{"FLAG", "2"}};
+        support::rejects(ShaderProgram::compile(source, unknown), "A keyword value the source does not list compiled");
+    }
 } // namespace
 
 int main()
@@ -439,6 +619,7 @@ int main()
     userAttributes(root);
     compileModes(root);
     watchedReload(root);
+    keywordVariants(root);
     const auto source = root / "source/triangle.slang";
     const auto cooked = root / "source/triangle.vshaderc";
     fs::copy_file("examples/offline/shaders/triangle.slang", source);
@@ -518,11 +699,11 @@ void callableMain(inout Payload payload)
 }
 )";
     const std::array       rayEntries {ShaderEntry {"raygenMain", VriShaderStage_RayGen},
-                                       ShaderEntry {"missMain", VriShaderStage_Miss},
-                                       ShaderEntry {"closestHitMain", VriShaderStage_ClosestHit},
-                                       ShaderEntry {"anyHitMain", VriShaderStage_AnyHit},
-                                       ShaderEntry {"intersectionMain", VriShaderStage_Intersection},
-                                       ShaderEntry {"callableMain", VriShaderStage_Callable}};
+                                 ShaderEntry {"missMain", VriShaderStage_Miss},
+                                 ShaderEntry {"closestHitMain", VriShaderStage_ClosestHit},
+                                 ShaderEntry {"anyHitMain", VriShaderStage_AnyHit},
+                                 ShaderEntry {"intersectionMain", VriShaderStage_Intersection},
+                                 ShaderEntry {"callableMain", VriShaderStage_Callable}};
     const auto             rayProgram = must(ShaderProgram::compileSource(root / "ray.slang", raySource));
     require(rayProgram.shaders.size() == rayEntries.size(), "Ray tracing entry discovery failed");
     const auto rayCooked = root / "ray.vshaderc";

@@ -162,12 +162,14 @@ namespace vultra
     ShaderPipeline::loadProgram(Device&                            device,
                                 const std::filesystem::path&       file,
                                 std::vector<ShaderEntry>           entries,
-                                std::vector<std::filesystem::path> includeDirectories)
+                                std::vector<std::filesystem::path> includeDirectories,
+                                std::vector<ShaderDefine>          keywords)
     {
         ShaderCompileOptions options;
         options.entries            = std::move(entries);
         options.includeDirectories = std::move(includeDirectories);
         options.profile            = shaderProfile(device.graphicsAPI());
+        options.keywords           = std::move(keywords);
         auto resolved              = detail::absolutePath(file);
         if (!resolved)
         {
@@ -186,7 +188,7 @@ namespace vultra
         {
             resolved->replace_extension(".vshaderc");
         }
-        return ShaderProgram::load(*resolved, options.profile);
+        return ShaderProgram::load(*resolved, options.profile, options.keywords);
     }
 
     std::expected<ShaderProgram, Error>
@@ -194,13 +196,15 @@ namespace vultra
                                 const std::filesystem::path&       file,
                                 std::string_view                   text,
                                 std::vector<ShaderEntry>           entries,
-                                std::vector<std::filesystem::path> includeDirectories)
+                                std::vector<std::filesystem::path> includeDirectories,
+                                std::vector<ShaderDefine>          keywords)
     {
 #ifdef VULTRA_WITH_SHADER_COMPILER
         ShaderCompileOptions options;
         options.entries            = std::move(entries);
         options.includeDirectories = std::move(includeDirectories);
         options.profile            = shaderProfile(device.graphicsAPI());
+        options.keywords           = std::move(keywords);
         return ShaderProgram::compileSource(file, text, options);
 #else
         return makeError("This build cannot compile {}: compile Slang on the host", file.generic_string());

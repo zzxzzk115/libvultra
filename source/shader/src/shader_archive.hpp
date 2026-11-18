@@ -24,7 +24,17 @@ namespace vultra::detail
     // out [[vk::push_constant]] blocks as ordinary constant buffers.
     [[nodiscard]] std::expected<void, Error> markPushConstants(ShaderParameter& target, const ShaderParameter& spirv);
     [[nodiscard]] std::expected<std::vector<ShaderAttribute>, Error>
-                                                       reflectShaderAttributes(slang::FunctionReflection* function);
+    reflectShaderAttributes(slang::FunctionReflection* function);
+    // The keywords [VultraKeyword(name, type)] attributes declare, in order; a malformed one is an error naming it.
+    [[nodiscard]] std::expected<std::vector<ShaderKeyword>, Error>
+    shaderKeywords(std::span<const ShaderAttribute> attributes);
+    // Every keyword's value for `selection` ({name, value}, the default for a keyword it leaves out), in declaration
+    // order; a name the keywords do not declare, or a value a keyword does not list, is an error naming the choices.
+    [[nodiscard]] std::expected<std::vector<ShaderDefine>, Error>
+    keywordValues(std::span<const ShaderKeyword> keywords, std::span<const ShaderDefine> selection);
+    // The macros that select `values`: NAME = the value's index, for every value but a keyword's first.
+    std::vector<ShaderDefine>                          keywordDefines(std::span<const ShaderKeyword> keywords,
+                                                                      std::span<const ShaderDefine>  values);
     nlohmann::json                                     encodeShaderProgram(const ShaderProgram& program);
     [[nodiscard]] std::expected<ShaderProgram, Error>  decodeShaderProgram(const nlohmann::json& document);
     [[nodiscard]] std::expected<nlohmann::json, Error> readShaderArchive(const std::filesystem::path& file);
