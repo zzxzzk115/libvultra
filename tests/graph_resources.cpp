@@ -3,6 +3,7 @@
 #include <vultra/gpu/buffer_upload.hpp>
 #include <vultra/gpu/image_readback.hpp>
 #include <vultra/graph/render_graph.hpp>
+#include <vultra/shader/shader_pipeline.hpp>
 
 #include <array>
 #include <cstring>
@@ -439,6 +440,160 @@ namespace
         RenderGraph refused(device);
         require(!refused.createHistoryBuffer("hostile", seen), "A history buffer without storage usage was accepted");
     }
+
+    // A compute pass writes the arguments of an indirect dispatch that a later pass reads (Usage::eIndirectBuffer),
+    // in every frame: the graph orders the storage write before the indirect read, and the read before the next
+    // frame's write. The dispatched groups count themselves.
+    void indirectArguments(Device& device)
+    {
+        constexpr std::string_view     kShader = R"(
+RWStructuredBuffer<uint> arguments;
+RWStructuredBuffer<Atomic<uint>> counter; // WGSL keeps atomics in atomic types.
+
+[shader("compute")]
+[numthreads(1, 1, 1)]
+void writeArguments()
+{
+    arguments[0] = 3;
+    arguments[1] = 2;
+    arguments[2] = 1;
+    counter[0].store(0);
+}
+
+[shader("compute")]
+[numthreads(1, 1, 1)]
+void count()
+{
+    counter[0].add(1);
+}
+)";
+        const std::vector<ShaderEntry> entries {{"writeArguments", VriShaderStage_Compute},
+                                                {"count", VriShaderStage_Compute}};
+        const auto                     program =
+            must(ShaderPipeline::loadProgram(device, "tests/indirect_arguments.slang", kShader, entries));
+        const auto                 bindings = must(program.resourceBindings());
+        const auto                 laid     = must(shaderSetLayout(device.graphicsAPI(),
+                                               bindings,
+                                               std::vector<bool>(bindings.size(), true),
+                                               VriShaderStage_Compute));
+        const VriDescriptorSetDesc set {0, laid.ranges.data(), uint32_t(laid.ranges.size())};
+        VriPipelineLayoutDesc      layoutDesc {};
+        layoutDesc.descriptorSets   = &set;
+        layoutDesc.descriptorSetNum = 1;
+        layoutDesc.shaderStages     = VriShaderStage_Compute;
+        VriPipelineLayout* layout   = nullptr;
+        must(check(device.core.CreatePipelineLayout(device.handle, &layoutDesc, &layout), "Create the layout"));
+        std::vector<std::unique_ptr<ShaderPipeline>> pipelines;
+        for (const auto& entry : entries)
+        {
+            pipelines.push_back(must(ShaderPipeline::create(
+                device,
+                program,
+                {entry},
+                [&](std::span<const VriShaderDesc> shaders) -> std::expected<VriPipeline*, Error>
+                {
+                    VriComputePipelineDesc desc {};
+                    desc.pipelineLayout   = layout;
+                    desc.shader           = shaders.front();
+                    VriPipeline* pipeline = nullptr;
+                    if (auto created = check(device.core.CreateComputePipeline(device.handle, &desc, &pipeline),
+                                             "Create a pipeline");
+                        !created)
+                    {
+                        return std::unexpected(created.error());
+                    }
+                    return pipeline;
+                })));
+        }
+        VriDescriptorPoolDesc poolDesc {};
+        poolDesc.descriptorSetMaxNum = 2;
+        poolDesc.storageBufferMaxNum = 4;
+        VriDescriptorPool* pool      = nullptr;
+        must(check(device.core.CreateDescriptorPool(device.handle, &poolDesc, &pool), "Create the pool"));
+        // The indirect dispatch binds a stand-in for the arguments: WebGPU refuses a buffer bound as storage in the
+        // dispatch that reads it as arguments.
+        std::array<VriDescriptorSet*, 2> descriptors {};
+        must(check(device.core.AllocateDescriptorSets(pool, layout, 0, descriptors.data(), 2), "Allocate the sets"));
+
+        const auto storage = [&](VriBufferUsageFlags usage)
+        {
+            return must(Buffer::create(device,
+                                       {4 * sizeof(uint32_t),
+                                        sizeof(uint32_t),
+                                        VriBufferUsage_StorageBuffer | usage,
+                                        VriMemoryLocation_Device}));
+        };
+        auto                        arguments = storage(VriBufferUsage_IndirectBuffer);
+        auto                        standIn   = storage(0);
+        auto                        counter   = storage(VriBufferUsage_TransferSrc);
+        std::vector<VriDescriptor*> views;
+        for (size_t set = 0; set < descriptors.size(); ++set)
+        {
+            for (size_t index = 0; index < laid.ranges.size(); ++index)
+            {
+                const bool              isArguments = bindings[laid.bindings[index]].name == "arguments";
+                auto&                   buffer      = isArguments ? (set == 0 ? arguments : standIn) : counter;
+                const VriBufferViewDesc desc {buffer.handle,
+                                              VriDescriptorType_StorageBuffer,
+                                              VriFormat_Unknown,
+                                              0,
+                                              buffer.desc.size};
+                views.push_back(nullptr);
+                must(check(device.core.CreateBufferView(device.handle, &desc, &views.back()), "Create a view"));
+                const VriDescriptor*               descriptor = views.back();
+                const VriDescriptorRangeUpdateDesc update {&descriptor, 1, 0};
+                device.core.UpdateDescriptorRanges(descriptors[set], uint32_t(index), 1, &update);
+            }
+        }
+
+        RenderGraph graph(device);
+        const auto  argumentsResource = must(graph.importResource("arguments", arguments));
+        const auto  counterResource   = must(graph.importResource("counter", counter));
+        const auto  bind              = [&](VriCommandBuffer* cmd, size_t pipeline)
+        {
+            device.core.CmdSetPipelineLayout(cmd, layout);
+            device.core.CmdSetPipeline(cmd, pipelines[pipeline]->handle());
+            device.core.CmdSetDescriptorSet(cmd, 0, descriptors[pipeline]);
+        };
+        must(graph.addPass(
+            "Write arguments",
+            {{argumentsResource, Usage::eStorageWrite, true}, {counterResource, Usage::eStorageWrite, true}},
+            [&](VriCommandBuffer* cmd, RenderGraph&) -> std::expected<void, Error>
+            {
+                bind(cmd, 0);
+                const VriDispatchDesc one {1, 1, 1};
+                device.core.CmdDispatch(cmd, &one);
+                return {};
+            }));
+        must(graph.addPass(
+            "Dispatch indirect",
+            {{argumentsResource, Usage::eIndirectBuffer}, {counterResource, Usage::eStorageReadWrite}},
+            [&](VriCommandBuffer* cmd, RenderGraph& current) -> std::expected<void, Error>
+            {
+                bind(cmd, 1);
+                device.core.CmdDispatchIndirect(cmd, current.getBuffer(argumentsResource).handle, 0);
+                return {};
+            },
+            true));
+        must(graph.compile());
+        const auto frame = must(Frame::create(device));
+        for (int each = 0; each < 2; ++each)
+        {
+            run(*frame, graph);
+            const auto data   = must(readbackBuffer(device, counter));
+            uint32_t   groups = 0;
+            std::memcpy(&groups, data.data(), sizeof(groups));
+            require(groups == 6, "An indirect dispatch did not read the arguments a compute pass wrote before it");
+        }
+        device.waitIdleForDestruction();
+        for (auto* view : views)
+        {
+            device.core.DestroyDescriptor(view);
+        }
+        device.core.DestroyDescriptorPool(pool);
+        pipelines.clear();
+        device.core.DestroyPipelineLayout(layout);
+    }
 } // namespace
 
 int main()
@@ -452,6 +607,7 @@ int main()
     invalidDiscard(*device);
     history(*device);
     historyBuffers(*device);
+    indirectArguments(*device);
     const auto separate = transientReuse(*device, false);
     const auto aliased  = transientReuse(*device, true);
     transientReuse(*device, true, true);
