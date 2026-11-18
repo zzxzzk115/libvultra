@@ -215,7 +215,12 @@ point has (what the required G-buffer layers hold) and `shade()` the radiance it
 viewer. `vultra.openpbr` is the built-in type, the one of model files. `GpuScene` keeps a header per material,
 `scene.materials` (type number and parameter offset), and the parameter blocks as words, `scene.material_data`;
 `vultra.mesh` provides both. A draw pushes the primitive's transform index, material number, type and offset; set 1
-holds the material's textures and `scene.material_data`. Every material starts as `vultra.openpbr` with its
+holds the material's textures and `scene.material_data`. A type samples texture slot i with
+`vultraSampleMaterial(i, input)`, never by the set's names, so the same code serves a program compiled with the
+shader keyword `VULTRA_MATERIAL_ARRAYS`, which evaluates many materials at once: its set 1
+(`SceneMaterials::arrayRanges()`, `MaterialBinding::eArrays`, needs `VriFeature_Bindless`) holds every material's
+textures in one array, the scene's distinct samplers in another with an index per texture, and the program sets the
+pixel's material itself. Every material starts as `vultra.openpbr` with its
 `SurfaceMaterial`'s values, which `RenderPath::prepare()` writes again each frame so that edits to
 `GpuScene::materials` show; `GpuScene::setMaterialType()` gives one another type and block. Shaders call the types
 through the Slang module `vultra.materials`: the builtin one knows only `vultra.openpbr` and dispatches nothing; a

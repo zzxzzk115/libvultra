@@ -27,28 +27,54 @@ struct VultraMaterialHeader
     uint offset; // The first word of the material's parameter block in scene.material_data.
 };
 
-// D3D12 registers follow VRI's mapping of the material set (space 1): textures, samplers and the parameter buffer
-// count from 0 per class in the layout's range order. Slang places the push constants at b2 in space 0, the first
-// register after the frame set's two pinned constant buffers. An explicit register would also reserve a descriptor
-// slot in the SPIR-V and WGSL layouts.
+// The texture slots of a material, each with its own sampler (kMaterialTextureCount in vultra/assets/scene_data.hpp).
+static const uint kVultraMaterialTextures = 7;
+
+// vultra.openpbr's slots, in the order of SurfaceMaterial's textures. Another type names its own slots.
+static const uint kVultraBaseColorSlot         = 0;
+static const uint kVultraMetallicRoughnessSlot = 1;
+static const uint kVultraNormalSlot            = 2;
+static const uint kVultraOcclusionSlot         = 3;
+static const uint kVultraEmissionSlot          = 4;
+static const uint kVultraSpecularSlot          = 5;
+static const uint kVultraSpecularColorSlot     = 6;
+
+// The material set (set 1, SceneMaterials). D3D12 registers follow VRI's mapping: textures, samplers and buffers
+// count from 0 per class in the layout's range order. An explicit register would also reserve a descriptor slot in
+// the SPIR-V and WGSL layouts.
+#if VULTRA_MATERIAL_ARRAYS
+// The keyword of a program that evaluates materials of many pixels at once, such as a visibility buffer's resolve
+// (SceneMaterials::arrayRanges): every material's textures in an array, kVultraMaterialTextures per material in
+// material order; the scene's distinct samplers in another, which D3D12's sampler heap of 2048 keeps short, and for
+// each texture the index of its sampler. The buffers come first so the registers stay fixed whatever the array
+// lengths. The program sets `material` to the material of the pixel it evaluates.
+static MaterialDraw                                   material;
+[[vk::binding(0, 1)]] StructuredBuffer<uint>          materialData : register(t0, space1);
+[[vk::binding(1, 1)]] StructuredBuffer<uint>          vultraMaterialSamplerIndices : register(t1, space1);
+[[vk::binding(2, 1)]] SamplerState                    vultraMaterialSamplers[] : register(s0, space1);
+[[vk::binding(3, 1)]] Texture2D<float4>               vultraMaterialTextures[] : register(t2, space1);
+#else
+// Slang places the push constants at b2 in space 0, the first register after the frame set's two pinned constant
+// buffers.
 [[vk::push_constant]] ConstantBuffer<MaterialDraw> material;
-[[vk::binding(0, 1)]] Texture2D<float4>            baseColorTexture : register(t0, space1);
-[[vk::binding(1, 1)]] Texture2D<float4>            metallicRoughnessTexture : register(t1, space1);
-[[vk::binding(2, 1)]] Texture2D<float4>            normalTexture : register(t2, space1);
-[[vk::binding(3, 1)]] Texture2D<float4>            occlusionTexture : register(t3, space1);
-[[vk::binding(4, 1)]] Texture2D<float4>            emissionTexture : register(t4, space1);
-[[vk::binding(5, 1)]] Texture2D<float4>            specularTexture : register(t5, space1);
-[[vk::binding(6, 1)]] Texture2D<float4>            specularColorTexture : register(t6, space1);
+[[vk::binding(0, 1)]] Texture2D<float4>            vultraMaterialTexture0 : register(t0, space1);
+[[vk::binding(1, 1)]] Texture2D<float4>            vultraMaterialTexture1 : register(t1, space1);
+[[vk::binding(2, 1)]] Texture2D<float4>            vultraMaterialTexture2 : register(t2, space1);
+[[vk::binding(3, 1)]] Texture2D<float4>            vultraMaterialTexture3 : register(t3, space1);
+[[vk::binding(4, 1)]] Texture2D<float4>            vultraMaterialTexture4 : register(t4, space1);
+[[vk::binding(5, 1)]] Texture2D<float4>            vultraMaterialTexture5 : register(t5, space1);
+[[vk::binding(6, 1)]] Texture2D<float4>            vultraMaterialTexture6 : register(t6, space1);
 // One sampler per texture: WebGPU has no binding arrays.
-[[vk::binding(7, 1)]] SamplerState                 baseColorSampler : register(s0, space1);
-[[vk::binding(8, 1)]] SamplerState                 metallicRoughnessSampler : register(s1, space1);
-[[vk::binding(9, 1)]] SamplerState                 normalSampler : register(s2, space1);
-[[vk::binding(10, 1)]] SamplerState                occlusionSampler : register(s3, space1);
-[[vk::binding(11, 1)]] SamplerState                emissionSampler : register(s4, space1);
-[[vk::binding(12, 1)]] SamplerState                specularSampler : register(s5, space1);
-[[vk::binding(13, 1)]] SamplerState                specularColorSampler : register(s6, space1);
+[[vk::binding(7, 1)]] SamplerState                 vultraMaterialSampler0 : register(s0, space1);
+[[vk::binding(8, 1)]] SamplerState                 vultraMaterialSampler1 : register(s1, space1);
+[[vk::binding(9, 1)]] SamplerState                 vultraMaterialSampler2 : register(s2, space1);
+[[vk::binding(10, 1)]] SamplerState                vultraMaterialSampler3 : register(s3, space1);
+[[vk::binding(11, 1)]] SamplerState                vultraMaterialSampler4 : register(s4, space1);
+[[vk::binding(12, 1)]] SamplerState                vultraMaterialSampler5 : register(s5, space1);
+[[vk::binding(13, 1)]] SamplerState                vultraMaterialSampler6 : register(s6, space1);
 // scene.material_data: the parameter blocks of every material, as 32-bit words.
 [[vk::binding(14, 1)]] StructuredBuffer<uint>      materialData : register(t7, space1);
+#endif
 
 // The parameters of a vultra.openpbr material, the block GpuScene writes for it.
 struct OpenPbrParameters
@@ -81,9 +107,9 @@ OpenPbrParameters vultraOpenPbrParameters()
     return result;
 }
 
-// A material texture at the input's uv: with the rasterizer's derivatives in a fragment stage, with the input's
-// gradients in any other. Material types sample their textures through it.
-float4 vultraSampleMaterial(Texture2D<float4> texture, SamplerState sampler, VultraSurfaceInput input)
+// `texture` at the input's uv: with the rasterizer's derivatives in a fragment stage, with the input's gradients in
+// any other.
+float4 vultraSampleTexture(Texture2D<float4> texture, SamplerState sampler, VultraSurfaceInput input)
 {
     float2 uvDdx = input.uvDdx;
     float2 uvDdy = input.uvDdy;
@@ -96,6 +122,38 @@ float4 vultraSampleMaterial(Texture2D<float4> texture, SamplerState sampler, Vul
         break;
     }
     return texture.SampleGrad(sampler, input.vertex.uv, uvDdx, uvDdy);
+}
+
+// Texture slot `slot` of the material (`material.instance.y`) at the input's uv, as vultraSampleTexture() samples.
+// Material types sample their textures through it, by the slot index their manifest gives ("textures"); a slot the
+// type does not declare holds the white default texture, and a slot of kVultraMaterialTextures or more is undefined.
+float4 vultraSampleMaterial(uint slot, VultraSurfaceInput input)
+{
+#if VULTRA_MATERIAL_ARRAYS
+    const uint texture = material.instance.y * kVultraMaterialTextures + slot;
+    const uint sampler = vultraMaterialSamplerIndices[texture];
+    return vultraSampleTexture(vultraMaterialTextures[NonUniformResourceIndex(texture)],
+                               vultraMaterialSamplers[NonUniformResourceIndex(sampler)],
+                               input);
+#else
+    switch (slot)
+    {
+    case 0:
+        return vultraSampleTexture(vultraMaterialTexture0, vultraMaterialSampler0, input);
+    case 1:
+        return vultraSampleTexture(vultraMaterialTexture1, vultraMaterialSampler1, input);
+    case 2:
+        return vultraSampleTexture(vultraMaterialTexture2, vultraMaterialSampler2, input);
+    case 3:
+        return vultraSampleTexture(vultraMaterialTexture3, vultraMaterialSampler3, input);
+    case 4:
+        return vultraSampleTexture(vultraMaterialTexture4, vultraMaterialSampler4, input);
+    case 5:
+        return vultraSampleTexture(vultraMaterialTexture5, vultraMaterialSampler5, input);
+    default:
+        return vultraSampleTexture(vultraMaterialTexture6, vultraMaterialSampler6, input);
+    }
+#endif
 }
 
 // Discards the fragment; does nothing in another stage, which resolves only what a fragment stage kept. Inlined:
@@ -116,7 +174,7 @@ void vultraDiscard()
 float4 vultraBaseColor(VultraSurfaceInput input)
 {
     const OpenPbrParameters parameters = vultraOpenPbrParameters();
-    float4 result = vultraSampleMaterial(baseColorTexture, baseColorSampler, input) * parameters.baseColor *
+    float4 result = vultraSampleMaterial(kVultraBaseColorSlot, input) * parameters.baseColor *
                     input.vertex.color;
     if (result.a < parameters.flags.x)
     {
@@ -142,7 +200,7 @@ float3 surfaceNormal(VultraSurfaceInput surfaceInput)
     }
     tangent *= rsqrt(tangentLength);
     float3 bitangent = input.tangent.w * cross(normal, tangent);
-    float3 mapped    = vultraSampleMaterial(normalTexture, normalSampler, surfaceInput).xyz * 2 - 1;
+    float3 mapped    = vultraSampleMaterial(kVultraNormalSlot, surfaceInput).xyz * 2 - 1;
     if (parameters.flags.w > 1.5)
     {
         mapped.z = sqrt(saturate(1 - dot(mapped.xy, mapped.xy))); // BC5 stores only X and Y.

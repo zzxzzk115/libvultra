@@ -15,6 +15,14 @@ namespace vultra
 {
     class GpuScene;
 
+    // How a program binds the materials: one set per material, or, compiled with the shader keyword
+    // VULTRA_MATERIAL_ARRAYS, one set of arrays that holds every material (needs VriFeature_Bindless).
+    enum class MaterialBinding
+    {
+        ePerMaterial,
+        eArrays
+    };
+
     // The scene's materials as `import vultra.material;` reads them: each material's textures and samplers and
     // scene.material_data in descriptor set 1, and the primitive's transform index, material number, type and
     // parameter offset as push constants. Every stage that rasterizes the scene with its materials draws through
@@ -26,12 +34,20 @@ namespace vultra
 
         // Set 1 of a stage's pipeline layout: seven textures, one sampler for each, then scene.material_data.
         static std::span<const VriDescriptorRangeDesc> ranges();
+        // Set 1 of a program compiled with VULTRA_MATERIAL_ARRAYS for `scene`: scene.material_data, the sampler index
+        // of every texture, an array of the scene's distinct samplers and one of textures with kMaterialTextureCount
+        // entries per material, in material order.
+        static std::vector<VriDescriptorRangeDesc> arrayRanges(const GpuScene& scene, VriShaderStageFlags stages);
         // The push constants of a stage's pipeline layout, for vertex and fragment shaders.
         static VriPushConstantDesc constants();
 
-        // Creates the material sets of `scene` for pipelines of `layout`. The scene must outlive this object.
+        // Creates the material sets of `scene` for pipelines of `layout`, whose set 1 is ranges() (ePerMaterial) or
+        // arrayRanges() for the scene's materials (eArrays). The scene must outlive this object.
         [[nodiscard]] static std::expected<std::unique_ptr<SceneMaterials>, Error>
-        create(Device& device, VriPipelineLayout* layout, GpuScene& scene);
+        create(Device&            device,
+               VriPipelineLayout* layout,
+               GpuScene&          scene,
+               MaterialBinding    binding = MaterialBinding::ePerMaterial);
         ~SceneMaterials();
         SceneMaterials(const SceneMaterials&)            = delete;
         SceneMaterials& operator=(const SceneMaterials&) = delete;
@@ -49,18 +65,22 @@ namespace vultra
                   std::span<VriPipeline* const, 4> pipelines,
                   VriDescriptorSet*                set0) const;
 
-        // The set of material `material`, for a stage that binds it itself, such as a compute pass.
+        // The set of material `material`, for a stage that binds it itself, such as a compute pass; with eArrays the
+        // one set that holds every material, whatever `material`.
         VriDescriptorSet* set(uint32_t material) const;
 
     private:
         SceneMaterials(Device& device, VriPipelineLayout* layout, GpuScene& scene);
 
-        Device&                        m_Device;
-        VriPipelineLayout*             m_Layout;
-        GpuScene&                      m_Scene;
-        VriDescriptorPool*             m_Pool = nullptr;
-        VriDescriptor*                 m_Data = nullptr; // scene.material_data, the same in every set.
-        std::vector<VriDescriptorSet*> m_Sets;           // One per material.
-        std::vector<VriDescriptor*>    m_Samplers;       // The default sampler, then one per scene sampler.
+        Device&            m_Device;
+        VriPipelineLayout* m_Layout;
+        GpuScene&          m_Scene;
+        VriDescriptorPool* m_Pool = nullptr;
+        VriDescriptor*     m_Data = nullptr; // scene.material_data, the same in every set.
+        // eArrays: per texture of every material, the index of its sampler in m_Samplers.
+        std::unique_ptr<Buffer>        m_SamplerIndices;
+        VriDescriptor*                 m_SamplerIndexView = nullptr;
+        std::vector<VriDescriptorSet*> m_Sets;     // One per material.
+        std::vector<VriDescriptor*>    m_Samplers; // The default sampler, then one per scene sampler.
     };
 } // namespace vultra
