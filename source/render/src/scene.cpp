@@ -18,18 +18,20 @@ namespace vultra
 {
     namespace
     {
-        static_assert(sizeof(PrimitiveTransform) == 208 && offsetof(PrimitiveTransform, previousModel) == 144);
+        static_assert(sizeof(InstanceData) == 224 && offsetof(InstanceData, previousModel) == 144 &&
+                      offsetof(InstanceData, references) == 208);
+        static_assert(sizeof(ModelData) == 16);
 
-        // Per-primitive queries take indices from the scene's own primitive table; any other index is a bug.
-        void requirePrimitive(uint32_t index, size_t count)
+        // Per-instance and per-draw queries take indices from the scene's own tables; any other index is a bug.
+        void requireIndex(uint32_t index, size_t count)
         {
             if (index >= count)
             {
-                panic("GpuScene primitive index out of range");
+                panic("GpuScene instance or draw index out of range");
             }
         }
 
-        std::expected<PrimitiveTransform, Error> transformData(const glm::mat4& model)
+        std::expected<InstanceData, Error> transformData(const glm::mat4& model)
         {
             if (model[0][3] != 0 || model[1][3] != 0 || model[2][3] != 0 || model[3][3] != 1)
             {
@@ -70,10 +72,11 @@ namespace vultra
             {
                 return makeError("Primitive transform exceeds finite bounds");
             }
-            return PrimitiveTransform {model,
-                                       glm::mat4(glm::transpose(glm::inverse(linear))),
-                                       {determinant < 0 ? -1.0f : 1.0f, sphereScale, 0, 0},
-                                       model};
+            return InstanceData {model,
+                                 glm::mat4(glm::transpose(glm::inverse(linear))),
+                                 {determinant < 0 ? -1.0f : 1.0f, sphereScale, 0, 0},
+                                 model,
+                                 {}};
         }
 
         std::optional<VriAddressMode> addressMode(SamplerAddressMode mode)
@@ -182,10 +185,12 @@ namespace vultra
     {
     }
 
-    std::expected<std::unique_ptr<GpuScene>, Error> GpuScene::create(Device&                 device,
-                                                                     const SceneData&        scene,
-                                                                     const PreparedTextures& prepared,
-                                                                     const MeshletData*      prebuiltMeshlets)
+    std::expected<std::unique_ptr<GpuScene>, Error> GpuScene::create(Device&                        device,
+                                                                     const SceneData&               scene,
+                                                                     const PreparedTextures&        prepared,
+                                                                     const MeshletData*             prebuiltMeshlets,
+                                                                     std::span<const SceneModel>    models,
+                                                                     std::span<const SceneInstance> instances)
     {
         if (prepared.materials.size() != scene.materials.size())
         {
@@ -231,8 +236,62 @@ namespace vultra
                 return makeError("Invalid scene vertex index");
             }
         }
+        // The models and their instances: without them, the scene is one model drawn once.
+        result->models.assign(models.begin(), models.end());
+        if (result->models.empty())
+        {
+            result->models.push_back({0, uint32_t(scene.primitives.size()), 0, uint32_t(scene.materials.size())});
+        }
+        for (const auto& model : result->models)
+        {
+            if (uint64_t(model.firstPrimitive) + model.primitiveCount > scene.primitives.size() ||
+                uint64_t(model.firstMaterial) + model.materialCount > scene.materials.size())
+            {
+                return makeError("A scene model's primitives or materials lie outside the scene");
+            }
+            for (uint32_t index = 0; index < model.primitiveCount; ++index)
+            {
+                const auto material = scene.primitives[model.firstPrimitive + index].material;
+                if (material < model.firstMaterial || material - model.firstMaterial >= model.materialCount)
+                {
+                    return makeError("A primitive of a scene model uses a material of another model");
+                }
+            }
+        }
+        result->instances.assign(instances.begin(), instances.end());
+        if (result->instances.empty())
+        {
+            for (uint32_t model = 0; model < result->models.size(); ++model)
+            {
+                result->instances.push_back(
+                    {model, 0, result->models[model].primitiveCount, result->models[model].firstMaterial});
+            }
+        }
+        for (uint32_t instance = 0; instance < result->instances.size(); ++instance)
+        {
+            const auto& entry = result->instances[instance];
+            if (entry.model >= result->models.size())
+            {
+                return makeError("Scene instance {} draws model {}, which the scene does not have",
+                                 instance,
+                                 entry.model);
+            }
+            const auto& model = result->models[entry.model];
+            if (uint64_t(entry.firstPrimitive) + entry.primitiveCount > model.primitiveCount ||
+                uint64_t(entry.firstMaterial) + model.materialCount > scene.materials.size())
+            {
+                return makeError("Scene instance {} draws primitives or materials its model does not have", instance);
+            }
+            result->m_FirstDraw.push_back(uint32_t(result->draws.size()));
+            for (uint32_t index = 0; index < entry.primitiveCount; ++index)
+            {
+                const auto primitive = model.firstPrimitive + entry.firstPrimitive + index;
+                const auto material  = entry.firstMaterial + scene.primitives[primitive].material - model.firstMaterial;
+                result->draws.push_back({instance, primitive, material});
+            }
+        }
         result->m_LocalBounds.reserve(scene.primitives.size());
-        result->m_WorldBounds.resize(scene.primitives.size());
+        result->m_WorldBounds.resize(result->draws.size());
         for (const auto& primitive : scene.primitives)
         {
             PrimitiveBounds bounds;
@@ -255,24 +314,50 @@ namespace vultra
             }
             result->m_LocalBounds.push_back(bounds);
         }
-        auto transforms =
+        auto instanceData =
             Buffer::create(device,
-                           VriBufferDesc {std::max<size_t>(scene.primitives.size(), 1) * sizeof(PrimitiveTransform),
-                                          sizeof(PrimitiveTransform),
+                           VriBufferDesc {std::max<size_t>(result->instances.size(), 1) * sizeof(InstanceData),
+                                          sizeof(InstanceData),
                                           VriBufferUsage_StorageBuffer,
                                           VriMemoryLocation_HostUpload});
-        if (!transforms)
+        if (!instanceData)
         {
-            return std::unexpected(transforms.error());
+            return std::unexpected(instanceData.error());
         }
-        result->transforms = std::make_unique<Buffer>(std::move(*transforms));
-        result->m_Mirrored.resize(scene.primitives.size());
-        result->m_Transforms.resize(scene.primitives.size());
-        result->m_PreviousTransforms.resize(scene.primitives.size());
-        if (auto initialized = result->setPrimitiveTransforms(0, uint32_t(scene.primitives.size()), glm::mat4(1));
-            !initialized)
+        result->instanceData = std::make_unique<Buffer>(std::move(*instanceData));
+        std::vector<ModelData> modelRecords;
+        for (const auto& model : result->models)
         {
-            return std::unexpected(initialized.error());
+            modelRecords.push_back(
+                {model.firstPrimitive, model.primitiveCount, model.firstMaterial, model.materialCount});
+        }
+        // Host-visible like scene.instances, which keeps it out of barriers.
+        auto modelData = Buffer::create(device,
+                                        VriBufferDesc {modelRecords.size() * sizeof(ModelData),
+                                                       sizeof(ModelData),
+                                                       VriBufferUsage_StorageBuffer,
+                                                       VriMemoryLocation_HostUpload});
+        if (!modelData)
+        {
+            return std::unexpected(modelData.error());
+        }
+        auto* mappedModels = device.core.MapBuffer(modelData->handle, 0, modelRecords.size() * sizeof(ModelData));
+        if (!mappedModels)
+        {
+            return makeError("Map scene.models");
+        }
+        std::memcpy(mappedModels, modelRecords.data(), modelRecords.size() * sizeof(ModelData));
+        device.core.UnmapBuffer(modelData->handle);
+        result->modelData = std::make_unique<Buffer>(std::move(*modelData));
+        result->m_Mirrored.resize(result->instances.size());
+        result->m_Transforms.resize(result->instances.size());
+        result->m_PreviousTransforms.resize(result->instances.size());
+        for (uint32_t instance = 0; instance < result->instances.size(); ++instance)
+        {
+            if (auto initialized = result->setInstanceTransform(instance, glm::mat4(1)); !initialized)
+            {
+                return std::unexpected(initialized.error());
+            }
         }
         std::vector<SceneVertex>     generated;
         std::span<const SceneVertex> vertexData = scene.vertices;
@@ -372,53 +457,52 @@ namespace vultra
         return result;
     }
 
-    std::expected<void, Error>
-    GpuScene::setPrimitiveTransforms(uint32_t first, uint32_t count, const glm::mat4& transform)
+    std::expected<void, Error> GpuScene::setInstanceTransform(uint32_t instance, const glm::mat4& transform)
     {
-        if (first > primitives.size() || count > primitives.size() - first)
+        if (instance >= instances.size())
         {
-            return makeError("Primitive transform range");
+            return makeError("Set the transform of instance {}: the scene has {}", instance, instances.size());
         }
         auto transformed = transformData(transform);
         if (!transformed)
         {
             return std::unexpected(transformed.error());
         }
-        auto&           data = *transformed;
+        if (m_TransformRevision == UINT64_MAX)
+        {
+            panic("Instance transform revision exhausted");
+        }
+        auto&       data     = *transformed;
+        const auto& entry    = instances[instance];
+        auto&       previous = m_PreviousTransforms[instance];
+        if (!m_FrameStarted)
+        {
+            previous = transform;
+        }
+        data.previousModel = previous;
+        data.references    = {entry.model,
+                              models[entry.model].firstPrimitive + entry.firstPrimitive,
+                              entry.primitiveCount,
+                              entry.firstMaterial};
+        auto* mapped       = m_Device.core.MapBuffer(instanceData->handle,
+                                               uint64_t(instance) * sizeof(InstanceData),
+                                               sizeof(InstanceData));
+        if (!mapped)
+        {
+            return makeError("Map scene.instances");
+        }
+        std::memcpy(mapped, &data, sizeof(data));
+        m_Device.core.UnmapBuffer(instanceData->handle);
+        m_Mirrored[instance]   = data.properties.x < 0;
+        m_Transforms[instance] = transform;
         const glm::mat3 absoluteLinear {glm::abs(glm::vec3(transform[0])),
                                         glm::abs(glm::vec3(transform[1])),
                                         glm::abs(glm::vec3(transform[2]))};
-        if (count == 0)
+        for (uint32_t draw = m_FirstDraw[instance]; draw < m_FirstDraw[instance] + entry.primitiveCount; ++draw)
         {
-            return {};
+            const auto& local   = m_LocalBounds[draws[draw].primitive];
+            m_WorldBounds[draw] = {glm::vec3(transform * glm::vec4(local.center, 1)), absoluteLinear * local.extent};
         }
-        if (m_TransformRevision == UINT64_MAX)
-        {
-            panic("Primitive transform revision exhausted");
-        }
-        const uint64_t offset = uint64_t(first) * sizeof(PrimitiveTransform);
-        auto*          mapped = static_cast<std::byte*>(
-            m_Device.core.MapBuffer(transforms->handle, offset, uint64_t(count) * sizeof(PrimitiveTransform)));
-        if (!mapped)
-        {
-            return makeError("Map primitive transforms");
-        }
-        for (uint32_t index = 0; index < count; ++index)
-        {
-            auto& previous = m_PreviousTransforms[first + index];
-            if (!m_FrameStarted)
-            {
-                previous = transform;
-            }
-            data.previousModel = previous;
-            std::memcpy(mapped + uint64_t(index) * sizeof(data), &data, sizeof(data));
-            m_Mirrored[first + index]    = data.properties.x < 0;
-            m_Transforms[first + index]  = transform;
-            const auto& local            = m_LocalBounds[first + index];
-            m_WorldBounds[first + index] = {glm::vec3(transform * glm::vec4(local.center, 1)),
-                                            absoluteLinear * local.extent};
-        }
-        m_Device.core.UnmapBuffer(transforms->handle);
         ++m_TransformRevision;
         return {};
     }
@@ -529,16 +613,16 @@ namespace vultra
         return writeMaterials();
     }
 
-    bool GpuScene::primitiveMirrored(uint32_t index) const
+    bool GpuScene::instanceMirrored(uint32_t instance) const
     {
-        requirePrimitive(index, primitives.size());
-        return m_Mirrored[index] != 0;
+        requireIndex(instance, instances.size());
+        return m_Mirrored[instance] != 0;
     }
 
-    const glm::mat4& GpuScene::primitiveTransform(uint32_t index) const
+    const glm::mat4& GpuScene::instanceTransform(uint32_t instance) const
     {
-        requirePrimitive(index, primitives.size());
-        return m_Transforms[index];
+        requireIndex(instance, instances.size());
+        return m_Transforms[instance];
     }
 
     uint64_t GpuScene::transformRevision() const
@@ -554,28 +638,28 @@ namespace vultra
             return {};
         }
         auto* mapped = static_cast<std::byte*>(
-            m_Device.core.MapBuffer(transforms->handle, 0, primitives.size() * sizeof(PrimitiveTransform)));
+            m_Device.core.MapBuffer(instanceData->handle, 0, instances.size() * sizeof(InstanceData)));
         if (!mapped)
         {
-            return makeError("Map primitive transforms");
+            return makeError("Map scene.instances");
         }
-        for (size_t index = 0; index < primitives.size(); ++index)
+        for (size_t index = 0; index < instances.size(); ++index)
         {
             if (m_PreviousTransforms[index] != m_Transforms[index])
             {
                 m_PreviousTransforms[index] = m_Transforms[index];
-                std::memcpy(mapped + index * sizeof(PrimitiveTransform) + offsetof(PrimitiveTransform, previousModel),
+                std::memcpy(mapped + index * sizeof(InstanceData) + offsetof(InstanceData, previousModel),
                             &m_Transforms[index],
                             sizeof(glm::mat4));
             }
         }
-        m_Device.core.UnmapBuffer(transforms->handle);
+        m_Device.core.UnmapBuffer(instanceData->handle);
         return {};
     }
 
-    const PrimitiveBounds& GpuScene::primitiveBounds(uint32_t index) const
+    const PrimitiveBounds& GpuScene::drawBounds(uint32_t draw) const
     {
-        requirePrimitive(index, primitives.size());
-        return m_WorldBounds[index];
+        requireIndex(draw, draws.size());
+        return m_WorldBounds[draw];
     }
 } // namespace vultra

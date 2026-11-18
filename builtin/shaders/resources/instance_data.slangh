@@ -1,0 +1,20 @@
+#pragma once
+
+// One record of scene.instances; keep in sync with InstanceData in vultra/render/scene.hpp.
+struct InstanceData
+{
+    float4x4 model;
+    float4x4 normal;
+    float4   properties;    // Tangent handedness, conservative sphere scale.
+    float4x4 previousModel; // Where the previous frame drew the instance.
+    uint4    references;    // Model, first primitive (of the scene), primitive count, first material.
+};
+
+// One record of scene.models; keep in sync with ModelData in vultra/render/scene.hpp.
+struct ModelData
+{
+    uint firstPrimitive;
+    uint primitiveCount;
+    uint firstMaterial;
+    uint materialCount;
+};

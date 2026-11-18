@@ -2,10 +2,10 @@
 
 #include "lib/surface_types.slangh"
 #include "resources/gpu_material.slangh"
-#include "resources/primitive_transform.slangh"
+#include "resources/instance_data.slangh"
 
 // A scene vertex placed in the world by its primitive's transform and projected by `viewProjection`.
-SurfaceVertex vultraTransformVertex(MeshVertex input, PrimitiveTransform instance, float4x4 viewProjection)
+SurfaceVertex vultraTransformVertex(MeshVertex input, InstanceData instance, float4x4 viewProjection)
 {
     SurfaceVertex result;
     result.worldPosition = mul(instance.model, float4(input.position, 1)).xyz;

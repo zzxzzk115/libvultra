@@ -35,7 +35,7 @@ namespace vultra
 
         // The bindings of frame_block.slangh and openpbr_luts.slangh in set 0, in range order: frame constants,
         // camera constants, radiance, diffuse, specular, BRDF LUT, environment sampler, OpenPBR tables,
-        // primitive transforms, scene lights.
+        // instances, scene lights.
         constexpr VriShaderStageFlags                    kFrameStages = VriShaderStage_Vertex | VriShaderStage_Fragment;
         constexpr std::array<VriDescriptorRangeDesc, 10> kFrameRanges {{
             {0, 1, VriDescriptorType_ConstantBuffer, kFrameStages},
@@ -169,10 +169,11 @@ namespace vultra
             std::expected<SceneResources, Error> addPasses(StageBuild& build) override
             {
                 SceneResources                                            resources;
-                const std::array<std::pair<std::string_view, Buffer*>, 5> buffers {
+                const std::array<std::pair<std::string_view, Buffer*>, 6> buffers {
                     std::pair {kSceneVertices, build.scene.vertices.get()},
                     std::pair {kSceneIndices, build.scene.indices.get()},
-                    std::pair {kSceneInstances, build.scene.transforms.get()},
+                    std::pair {kSceneInstances, build.scene.instanceData.get()},
+                    std::pair {kSceneModels, build.scene.modelData.get()},
                     std::pair {kSceneMaterials, build.scene.materialHeaders.get()},
                     std::pair {kSceneMaterialData, build.scene.materialData.get()}};
                 for (const auto& [name, buffer] : buffers)
@@ -209,7 +210,8 @@ namespace vultra
                  {},
                  {bufferResource(kSceneVertices, sizeof(SceneVertex)),
                   bufferResource(kSceneIndices, sizeof(uint32_t)),
-                  bufferResource(kSceneInstances, sizeof(PrimitiveTransform)),
+                  bufferResource(kSceneInstances, sizeof(InstanceData)),
+                  bufferResource(kSceneModels, sizeof(ModelData)),
                   bufferResource(kSceneMaterials, sizeof(MaterialHeader)),
                   bufferResource(kSceneMaterialData, sizeof(uint32_t))}},
                 [](Device&, const AssetSource*) -> std::expected<std::unique_ptr<RenderStage>, Error>
@@ -483,7 +485,7 @@ namespace vultra
         pool.textureMaxNum          = kFrameTextureCount * viewCount;
         pool.samplerMaxNum          = viewCount;
         pool.constantBufferMaxNum   = 2 * viewCount; // Frame and camera constants.
-        pool.structuredBufferMaxNum = 2 * viewCount; // Primitive transforms and scene lights.
+        pool.structuredBufferMaxNum = 2 * viewCount; // Instances and scene lights.
         if (auto created = check(m_Device.core.CreateDescriptorPool(m_Device.handle, &pool, &m_Pool),
                                  "Create forward shading pool");
             !created)

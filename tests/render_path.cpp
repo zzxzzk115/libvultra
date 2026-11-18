@@ -328,7 +328,7 @@ namespace
             must(graph.exportResource(outputs.hdr));
             must(graph.exportResource(outputs.hdr));
             must(graph.compile());
-            must(gpu.setPrimitiveTransforms(0, 1, glm::mat4(1)));
+            must(gpu.setInstanceTransform(0, glm::mat4(1)));
             const auto stationary = render(device, renderer, graph, outputs, camera);
             require(renderer.shading->visiblePrimitives() == 1, "Visible triangle was culled");
             const auto mixedFrame = must(Frame::create(device));
@@ -351,10 +351,9 @@ namespace
                 require(must(readback(device, graph.getTexture(outputs.hdr))).rgba == stationary.rgba,
                         "Compute-to-graphics descriptor binding changed geometry output");
             }
-            must(gpu.setPrimitiveTransforms(0,
-                                            1,
-                                            glm::translate(glm::mat4(1), {1, 0, 0}) *
-                                                glm::scale(glm::mat4(1), {-0.5f, 0.8f, 1})));
+            must(gpu.setInstanceTransform(0,
+                                          glm::translate(glm::mat4(1), {1, 0, 0}) *
+                                              glm::scale(glm::mat4(1), {-0.5f, 0.8f, 1})));
             const auto partial = render(device, renderer, graph, outputs, camera);
             require(renderer.shading->visiblePrimitives() == 1 && std::ranges::any_of(partial.rgba,
                                                                                       [](float value)
@@ -362,13 +361,13 @@ namespace
                                                                                           return value > 1.5f;
                                                                                       }),
                     "A reflected, nonuniformly scaled triangle intersecting the frustum must remain visible");
-            must(gpu.setPrimitiveTransforms(0, 1, glm::translate(glm::mat4(1), {2, 0, 0})));
+            must(gpu.setInstanceTransform(0, glm::translate(glm::mat4(1), {2, 0, 0})));
             const auto moved = render(device, renderer, graph, outputs, camera);
             require(renderer.shading->visiblePrimitives() == 0, "Offscreen triangle was still submitted");
             const size_t center = (32 * 65 + 32) * 4;
             require(stationary.rgba[center] > 0.5f && moved.rgba[center] < stationary.rgba[center] * 0.05f,
                     "Primitive transform did not move rendered geometry");
-            must(gpu.setPrimitiveTransforms(0, 1, glm::scale(glm::mat4(1), {-1, 1, 1})));
+            must(gpu.setInstanceTransform(0, glm::scale(glm::mat4(1), {-1, 1, 1})));
             const auto mirrored = render(device, renderer, graph, outputs, camera);
             require(renderer.shading->visiblePrimitives() == 1, "Mirrored bounds were incorrectly culled");
             require(mirrored.rgba[center] > 0.5f, "Mirrored primitive was culled");
@@ -441,10 +440,9 @@ namespace
             {
                 must(gpu->beginFrame());
                 // Frame 1 moves the quad; frame 2 keeps it and moves the camera.
-                must(gpu->setPrimitiveTransforms(0,
-                                                 1,
-                                                 index == 0 ? glm::mat4(1) :
-                                                              glm::translate(glm::mat4(1), {0.25f, 0, 0})));
+                must(
+                    gpu->setInstanceTransform(0,
+                                              index == 0 ? glm::mat4(1) : glm::translate(glm::mat4(1), {0.25f, 0, 0})));
                 must(path->prepare(graph, cameras.subspan(index, 1), {}));
                 const auto frame = must(Frame::create(device));
                 auto*      cmd   = must(frame->begin());
@@ -1317,10 +1315,10 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
                     const VriVertexBufferBinding binding {resources.getBuffer(vertices).handle, 0};
                     m_Device.core.CmdSetVertexBuffers(cmd, 0, &binding, 1);
                     m_Device.core.CmdSetIndexBuffer(cmd, resources.getBuffer(indices).handle, 0, VriIndexType_UInt32);
-                    for (uint32_t index = 0; index < m_Scene->primitives.size(); ++index)
+                    for (const auto& draw : m_Scene->draws)
                     {
-                        const auto&      primitive = m_Scene->primitives[index];
-                        const auto&      world     = m_Scene->primitiveTransform(index);
+                        const auto&      primitive = m_Scene->primitives[draw.primitive];
+                        const auto&      world     = m_Scene->instanceTransform(draw.instance);
                         const Parameters parameters {m_ViewProjections[view] * world, world};
                         m_Device.core.CmdSetConstants(cmd, 0, &parameters, sizeof(parameters));
                         const VriDrawIndexedDesc draw {primitive.indexCount, 1, primitive.firstIndex, 0, 0};
@@ -2052,6 +2050,62 @@ struct VertexOutput { float4 position : SV_Position; float3 normal : NORMAL; };
                   << std::endl;
     }
 
+    // Instances: one quad stored once, drawn twice with transforms of its own, the second with a material of its
+    // own (a red copy of the model's blue one). Ranges outside the scene are refused.
+    void instancedModels(vultra::Device& device, vultra::Environment& environment)
+    {
+        using namespace vultra;
+        auto scene = quadScene();
+        scene.materials.push_back(scene.materials.front());
+        scene.materials.back().emissionColor = {1, 0, 0};
+        const std::array<SceneModel, 1>    models {SceneModel {0, 1, 0, 1}};
+        const std::array<SceneInstance, 2> instances {SceneInstance {0, 0, 1, 0}, SceneInstance {0, 0, 1, 1}};
+        const auto textures = must(prepareTextures(scene, {.compression = TextureCompression::eNone}));
+        const auto gpu      = must(GpuScene::create(device, scene, textures, nullptr, models, instances));
+        const auto single   = must(GpuScene::create(device, quadScene()));
+        require(gpu->vertices->desc.size == single->vertices->desc.size &&
+                    gpu->indices->desc.size == single->indices->desc.size && gpu->draws.size() == 2 &&
+                    gpu->draws[0].material == 0 && gpu->draws[1].material == 1,
+                "Two instances of one model must share its geometry and keep their materials");
+        must(gpu->setInstanceTransform(0,
+                                       glm::translate(glm::mat4(1), {-1.2f, 0, 0}) *
+                                           glm::scale(glm::mat4(1), {0.4f, 0.4f, 1})));
+        must(gpu->setInstanceTransform(1,
+                                       glm::translate(glm::mat4(1), {1.2f, 0, 0}) *
+                                           glm::scale(glm::mat4(1), {-0.4f, 0.4f, 1})));
+        require(!gpu->instanceMirrored(0) && gpu->instanceMirrored(1), "Mirroring is not kept per instance");
+        const auto forward                                                            = must(createForwardPath(device));
+        static_cast<ForwardShadingStage*>(forward->stage("shading"))->settings.ibl    = false;
+        static_cast<ForwardShadingStage*>(forward->stage("shading"))->settings.skybox = false;
+        const RenderView view {"main", {64, 64}};
+        const auto       camera = quadCamera({0, 0, 6});
+        const auto       image =
+            renderViews(device, *forward, *gpu, environment, std::span(&view, 1), std::span(&camera, 1)).front();
+        const auto at = [&](uint32_t x, uint32_t y)
+        {
+            return glm::vec3(image.rgba[(y * 64 + x) * 4],
+                             image.rgba[(y * 64 + x) * 4 + 1],
+                             image.rgba[(y * 64 + x) * 4 + 2]);
+        };
+        const auto left  = at(14, 32);
+        const auto right = at(49, 32);
+        const auto mid   = at(32, 32); // Between them: the background.
+        require(left.z > 1 && left.x < 0.01f && right.x > 1 && right.z < 0.01f && glm::length(mid) < 0.1f,
+                "The instances are not drawn where their transforms put them, with their own materials");
+
+        const std::array<SceneInstance, 1> badModel {SceneInstance {1, 0, 1, 0}};
+        const std::array<SceneInstance, 1> badMaterial {SceneInstance {0, 0, 1, 2}};
+        const std::array<SceneModel, 1>    otherMaterial {SceneModel {0, 1, 1, 1}};
+        require(!GpuScene::create(device, scene, textures, nullptr, models, badModel) &&
+                    !GpuScene::create(device, scene, textures, nullptr, models, badMaterial) &&
+                    !GpuScene::create(device, scene, textures, nullptr, otherMaterial, {}),
+                "An instance of a missing model, materials past the scene's, or a primitive of another model's "
+                "material must be refused");
+        std::cout << "Instances: one model's geometry drawn twice, each with its own transform, mirroring and "
+                     "material"
+                  << std::endl;
+    }
+
     // A parameter a stage reads when the graph is built: changing it, and only it, asks for a new graph, which
     // renders the probe at the new size. A build parameter the stage does not have is refused.
     void buildParameters(vultra::Device& device, vultra::Environment& environment)
@@ -2357,6 +2411,7 @@ int main()
     buildParameters(device, environment);
     asymmetricFrustum(device, environment);
     derivedView(device, environment);
+    instancedModels(device, environment);
     materialType(device, environment, directory);
     std::cout << "Forward path tests passed: constant HDR/IBL mip chain, BRDF LUT, upstream OpenPBR C++ reference, "
                  "material textures and live transforms\n";

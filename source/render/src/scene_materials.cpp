@@ -206,15 +206,16 @@ namespace vultra
         }
     }
 
-    void SceneMaterials::cull(const glm::mat4& viewProjection, std::vector<uint32_t>& primitives) const
+    void SceneMaterials::cull(const glm::mat4& viewProjection, std::vector<uint32_t>& draws) const
     {
-        primitives.clear();
+        draws.clear();
         const auto planes = frustumPlanes(viewProjection);
-        for (uint32_t index = 0; index < m_Scene.primitives.size(); ++index)
+        for (uint32_t index = 0; index < m_Scene.draws.size(); ++index)
         {
-            if (m_Scene.primitives[index].indexCount && intersects(m_Scene.primitiveBounds(index), planes))
+            if (m_Scene.primitives[m_Scene.draws[index].primitive].indexCount &&
+                intersects(m_Scene.drawBounds(index), planes))
             {
-                primitives.push_back(index);
+                draws.push_back(index);
             }
         }
     }
@@ -222,7 +223,7 @@ namespace vultra
     void SceneMaterials::draw(VriCommandBuffer*                cmd,
                               Buffer&                          vertices,
                               Buffer&                          indices,
-                              std::span<const uint32_t>        primitives,
+                              std::span<const uint32_t>        draws,
                               std::span<VriPipeline* const, 4> pipelines,
                               VriDescriptorSet*                set0) const
     {
@@ -231,24 +232,26 @@ namespace vultra
         m_Device.core.CmdSetVertexBuffers(cmd, 0, &binding, 1);
         m_Device.core.CmdSetIndexBuffer(cmd, indices.handle, 0, VriIndexType_UInt32);
         VriPipeline* activePipeline = nullptr;
-        for (const uint32_t index : primitives)
+        for (const uint32_t index : draws)
         {
-            const auto&    primitive = m_Scene.primitives[index];
-            const auto&    material  = m_Scene.materials[primitive.material];
-            const uint32_t variant   = (material.doubleSided ? 1u : 0u) + (m_Scene.primitiveMirrored(index) ? 2u : 0u);
-            auto*          pipeline  = pipelines[variant];
+            const auto&    draw      = m_Scene.draws[index];
+            const auto&    primitive = m_Scene.primitives[draw.primitive];
+            const auto&    material  = m_Scene.materials[draw.material];
+            const uint32_t variant =
+                (material.doubleSided ? 1u : 0u) + (m_Scene.instanceMirrored(draw.instance) ? 2u : 0u);
+            auto* pipeline = pipelines[variant];
             if (pipeline != activePipeline)
             {
                 m_Device.core.CmdSetPipeline(cmd, pipeline);
                 m_Device.core.CmdSetDescriptorSet(cmd, 0, set0);
                 activePipeline = pipeline;
             }
-            const auto&        header = m_Scene.materialHeader(primitive.material);
-            const MaterialDraw parameters {index, primitive.material, header.type, header.offset};
+            const auto&        header = m_Scene.materialHeader(draw.material);
+            const MaterialDraw parameters {draw.instance, draw.material, header.type, header.offset};
             m_Device.core.CmdSetConstants(cmd, 0, &parameters, sizeof(parameters));
-            m_Device.core.CmdSetDescriptorSet(cmd, kSet, m_Sets[primitive.material]);
-            const VriDrawIndexedDesc draw {primitive.indexCount, 1, primitive.firstIndex, 0, 0};
-            m_Device.core.CmdDrawIndexed(cmd, &draw);
+            m_Device.core.CmdSetDescriptorSet(cmd, kSet, m_Sets[draw.material]);
+            const VriDrawIndexedDesc indexed {primitive.indexCount, 1, primitive.firstIndex, 0, 0};
+            m_Device.core.CmdDrawIndexed(cmd, &indexed);
         }
     }
 } // namespace vultra
