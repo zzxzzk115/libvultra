@@ -201,7 +201,7 @@ namespace vultra
         VriDescriptorType  type         = VriDescriptorType_Texture;
         uint32_t           set          = 0;
         uint32_t           binding      = 0;
-        uint32_t           count        = 1;
+        uint32_t           count        = 1; // Array elements; 0 for an array without a size (T name[]).
         uint64_t           uniformSize  = 0;
         VriTextureViewType viewType     = VriTextureViewType_2D;
         bool               pushConstant = false;

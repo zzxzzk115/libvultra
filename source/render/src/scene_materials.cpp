@@ -1,8 +1,10 @@
 #include <vultra/render/scene.hpp>
 #include <vultra/render/scene_materials.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstring>
 
 namespace vultra
 {
@@ -84,9 +86,20 @@ namespace vultra
         return kRanges;
     }
 
+    std::vector<VriDescriptorRangeDesc> SceneMaterials::arrayRanges(const GpuScene& scene, VriShaderStageFlags stages)
+    {
+        // Sampler 0 is the default; scene sampler i is at i + 1, as create() makes them.
+        const auto samplers = uint32_t(scene.samplers.size() + 1);
+        const auto textures = std::max(uint32_t(scene.materials.size()), 1u) * kMaterialTextureCount;
+        return {{0, 1, VriDescriptorType_StructuredBuffer, stages},
+                {1, 1, VriDescriptorType_StructuredBuffer, stages},
+                {2, samplers, VriDescriptorType_Sampler, stages},
+                {3, textures, VriDescriptorType_Texture, stages}};
+    }
+
     VriDescriptorSet* SceneMaterials::set(uint32_t material) const
     {
-        return m_Sets[material];
+        return m_Sets.size() == 1 ? m_Sets.front() : m_Sets[material];
     }
 
     VriPushConstantDesc SceneMaterials::constants()
@@ -103,7 +116,7 @@ namespace vultra
     }
 
     std::expected<std::unique_ptr<SceneMaterials>, Error>
-    SceneMaterials::create(Device& device, VriPipelineLayout* layout, GpuScene& scene)
+    SceneMaterials::create(Device& device, VriPipelineLayout* layout, GpuScene& scene, MaterialBinding binding)
     {
         // The destructor releases whatever was created when a later step fails.
         std::unique_ptr<SceneMaterials> result(new SceneMaterials(device, layout, scene));
@@ -136,25 +149,30 @@ namespace vultra
         {
             return std::unexpected(created.error());
         }
+        const bool            arrays = binding == MaterialBinding::eArrays;
+        const uint32_t        sets   = arrays ? 1 : count;
         VriDescriptorPoolDesc pool {};
-        pool.descriptorSetMaxNum    = count;
+        pool.descriptorSetMaxNum    = sets;
         pool.textureMaxNum          = count * kMaterialTextureCount;
-        pool.samplerMaxNum          = count * kMaterialTextureCount;
-        pool.structuredBufferMaxNum = count;
+        pool.samplerMaxNum          = arrays ? uint32_t(samplers.size()) : count * kMaterialTextureCount;
+        pool.structuredBufferMaxNum = arrays ? 2 : sets;
         if (auto created =
                 check(device.core.CreateDescriptorPool(device.handle, &pool, &result->m_Pool), "Create material pool");
             !created)
         {
             return std::unexpected(created.error());
         }
-        result->m_Sets.resize(count);
+        result->m_Sets.resize(sets);
         if (auto allocated =
-                check(device.core.AllocateDescriptorSets(result->m_Pool, layout, kSet, result->m_Sets.data(), count),
+                check(device.core.AllocateDescriptorSets(result->m_Pool, layout, kSet, result->m_Sets.data(), sets),
                       "Allocate material sets");
             !allocated)
         {
             return std::unexpected(allocated.error());
         }
+        // Every material's textures, kMaterialTextureCount per material in material order, and their samplers.
+        std::vector<const VriDescriptor*> allTextures;
+        std::vector<uint32_t>             samplerIndices;
         for (uint32_t material = 0; material < count; ++material)
         {
             const auto&                  source = scene.materials[material];
@@ -187,7 +205,54 @@ namespace vultra
                 updates[kMaterialTextureCount + slot] = {&materialSamplers[slot], 1};
             }
             updates[2 * kMaterialTextureCount] = {&data, 1};
+            if (arrays)
+            {
+                allTextures.insert(allTextures.end(), std::begin(textures), std::end(textures));
+                for (const auto& slot : slots)
+                {
+                    samplerIndices.push_back(uint32_t(slot.sampler + 1));
+                }
+                continue;
+            }
             device.core.UpdateDescriptorRanges(result->m_Sets[material], 0, kRangeCount, updates);
+        }
+        if (arrays)
+        {
+            const auto bytes   = std::as_bytes(std::span(samplerIndices));
+            auto       indices = Buffer::create(
+                device,
+                {bytes.size(), sizeof(uint32_t), VriBufferUsage_StorageBuffer, VriMemoryLocation_HostUpload});
+            if (!indices)
+            {
+                return std::unexpected(indices.error());
+            }
+            result->m_SamplerIndices = std::make_unique<Buffer>(std::move(*indices));
+            void* mapped             = device.core.MapBuffer(result->m_SamplerIndices->handle, 0, bytes.size());
+            if (!mapped)
+            {
+                return makeError("Map material sampler indices");
+            }
+            std::memcpy(mapped, bytes.data(), bytes.size());
+            device.core.UnmapBuffer(result->m_SamplerIndices->handle);
+            const VriBufferViewDesc view {result->m_SamplerIndices->handle,
+                                          VriDescriptorType_StructuredBuffer,
+                                          VriFormat_Unknown,
+                                          0,
+                                          bytes.size()};
+            if (auto created = check(device.core.CreateBufferView(device.handle, &view, &result->m_SamplerIndexView),
+                                     "Create material sampler index view");
+                !created)
+            {
+                return std::unexpected(created.error());
+            }
+            std::vector<const VriDescriptor*>  distinct(samplers.begin(), samplers.end());
+            const VriDescriptor*               data    = result->m_Data;
+            const VriDescriptor*               indexes = result->m_SamplerIndexView;
+            const VriDescriptorRangeUpdateDesc updates[] {{&data, 1},
+                                                          {&indexes, 1},
+                                                          {distinct.data(), uint32_t(distinct.size())},
+                                                          {allTextures.data(), uint32_t(allTextures.size())}};
+            device.core.UpdateDescriptorRanges(result->m_Sets.front(), 0, 4, updates);
         }
         return result;
     }
@@ -201,6 +266,10 @@ namespace vultra
         if (m_Data)
         {
             m_Device.core.DestroyDescriptor(m_Data);
+        }
+        if (m_SamplerIndexView)
+        {
+            m_Device.core.DestroyDescriptor(m_SamplerIndexView);
         }
         for (auto* sampler : m_Samplers)
         {

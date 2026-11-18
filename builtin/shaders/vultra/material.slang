@@ -60,9 +60,9 @@ float3 vultraEnvironmentLight(VultraSurface     surface,
 // surface is lit, also in a pass that only reads the G-buffer, so it reads nothing but its parameters and arguments.
 interface IVultraMaterial
 {
-    // The surface at a rasterized point: what the required G-buffer layers hold. Sample textures with
-    // vultraSampleMaterial(), which also works where there are no derivatives. A type that cuts out fragments
-    // calls vultraDiscard() here.
+    // The surface at a rasterized point: what the required G-buffer layers hold. Sample texture slot i with
+    // vultraSampleMaterial(i, input), which also works where there are no derivatives and in a program that
+    // evaluates many materials at once. A type that cuts out fragments calls vultraDiscard() here.
     VultraSurface surface(VultraSurfaceInput input);
 
     // Radiance reflected towards `toView` per unit radiance arriving from `toLight` (unit directions from the

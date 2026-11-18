@@ -26,7 +26,7 @@ VultraSurface vultraSampleSurface(VultraSurfaceInput surfaceInput, float3 baseCo
     const SurfaceVertex     input      = surfaceInput.vertex;
     VultraSurface result;
     float faceSign = surfaceInput.frontFace ? 1 : -1;
-    float2 mr = vultraSampleMaterial(metallicRoughnessTexture, metallicRoughnessSampler, surfaceInput).bg;
+    float2 mr = vultraSampleMaterial(kVultraMetallicRoughnessSlot, surfaceInput).bg;
     result.worldPosition = input.worldPosition;
     result.geometricNormal = normalize(input.normal) * faceSign;
     result.normal = surfaceNormal(surfaceInput) * faceSign;
@@ -35,13 +35,13 @@ VultraSurface vultraSampleSurface(VultraSurfaceInput surfaceInput, float3 baseCo
     result.metallic = saturate(parameters.surface.x * mr.x);
     result.roughness = clamp(parameters.surface.y * mr.y, 0.03, 1);
     result.emission =
-        vultraSampleMaterial(emissionTexture, emissionSampler, surfaceInput).rgb * parameters.emission.rgb;
+        vultraSampleMaterial(kVultraEmissionSlot, surfaceInput).rgb * parameters.emission.rgb;
     result.occlusion =
-        lerp(1, vultraSampleMaterial(occlusionTexture, occlusionSampler, surfaceInput).r, parameters.emission.w);
+        lerp(1, vultraSampleMaterial(kVultraOcclusionSlot, surfaceInput).r, parameters.emission.w);
     result.specularColor =
-        parameters.specular.rgb * vultraSampleMaterial(specularColorTexture, specularColorSampler, surfaceInput).rgb;
+        parameters.specular.rgb * vultraSampleMaterial(kVultraSpecularColorSlot, surfaceInput).rgb;
     result.specularWeight =
-        parameters.coat.w * vultraSampleMaterial(specularTexture, specularSampler, surfaceInput).a;
+        parameters.coat.w * vultraSampleMaterial(kVultraSpecularSlot, surfaceInput).a;
     result.specularIor = parameters.surface.z;
     result.coatWeight = parameters.coat.x;
     result.coatRoughness = parameters.coat.y;

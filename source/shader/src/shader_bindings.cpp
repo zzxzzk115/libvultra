@@ -107,9 +107,14 @@ namespace vultra
             }
             else if (node.kind == ShaderParameterKind::eArray)
             {
-                if (!node.count || node.count > 65536 || count > 65536 / node.count || node.fields.size() != 1)
+                // An array without a size (T name[]) takes the size its pipeline layout gives; it has count 0 and
+                // cannot be nested in another array.
+                if (node.fields.size() != 1 || node.count > 65536 || (node.count && count > 65536 / node.count) ||
+                    (!node.count && count != 1))
                 {
-                    return makeError("Material passes require bounded resource arrays: {}", name);
+                    return makeError("Resource arrays hold at most 65536 descriptors, and one without a size is not "
+                                     "nested: {}",
+                                     name);
                 }
                 return collectBindings(node.fields.front(),
                                        std::move(name),
@@ -183,6 +188,13 @@ namespace vultra
         if (bound.size() != bindings.size())
         {
             return makeError("shaderSetLayout needs one bound flag per binding");
+        }
+        for (const auto& binding : bindings)
+        {
+            if (binding.count == 0)
+            {
+                return makeError("{} is an array without a size: lay its set out with the size it needs", binding.name);
+            }
         }
         ShaderSetLayout layout;
         const auto      add = [&](size_t index)
