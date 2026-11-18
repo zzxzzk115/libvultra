@@ -16,6 +16,8 @@ VultraSurface forwardSurface(SurfaceVertex input, bool frontFace)
     VultraSurfaceInput surfaceInput;
     surfaceInput.vertex    = input;
     surfaceInput.frontFace = frontFace;
+    surfaceInput.uvDdx     = 0;
+    surfaceInput.uvDdy     = 0;
     VultraSurface surface  = vultraMaterialSurface(surfaceInput);
     if (frame.overrides.x >= 0)
     {
